@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>World Cup Prediction Bank</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="./config.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero-header">
+        <div class="hero-copy">
+          <p class="eyebrow">World Cup 2026</p>
+          <h1>Prediction Bank</h1>
+          <p class="hero-subtitle">Matchday picks, live history, and friendly table battles.</p>
+        </div>
+      </header>
+
+      <main>
+        <section class="summary-grid" aria-label="Game summary">
+          <article class="metric">
+            <span>Entry</span>
+            <strong id="entryMetric">$1.00</strong>
+          </article>
+          <article class="metric">
+            <span>Players</span>
+            <strong id="playersMetric">0</strong>
+          </article>
+          <article class="metric">
+            <span>Total Pot</span>
+            <strong id="rolloverMetric">$0.00</strong>
+          </article>
+        </section>
+
+        <nav class="tabs" aria-label="Sections">
+          <button class="tab active" data-tab="bet" type="button"><i data-lucide="ticket"></i><span>Bet</span></button>
+          <button class="tab" data-tab="table" type="button"><i data-lucide="bar-chart-3"></i><span>Table</span></button>
+          <button class="tab" data-tab="history" type="button"><i data-lucide="history"></i><span>History</span></button>
+          <button class="tab" data-tab="results" type="button"><i data-lucide="list-checks"></i><span>Results</span></button>
+          <button class="tab" data-tab="admin" type="button"><i data-lucide="settings-2"></i><span>Admin</span></button>
+          <button class="tab" data-tab="rules" type="button"><i data-lucide="book-open"></i><span>Rules</span></button>
+        </nav>
+
+        <section class="panel active" id="betPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Active match day</p>
+              <h2 id="activeDateTitle">Today</h2>
+            </div>
+            <select id="dateSelect" aria-label="Pick match day"></select>
+          </div>
+
+          <form id="betForm" class="bet-form">
+            <label class="field">
+              <span>Your name</span>
+              <input id="playerName" autocomplete="name" placeholder="Enter name" required />
+            </label>
+            <label class="field">
+              <span>Your PIN for edits</span>
+              <input id="playerPin" autocomplete="off" inputmode="numeric" minlength="4" placeholder="4+ digits or letters" required />
+            </label>
+            <p class="form-help">To edit before the cutoff, enter the same name and PIN, load your bet, change picks, then save again.</p>
+            <div class="rule-strip" id="dayRuleStrip"></div>
+            <div class="bet-cost" id="betCost"></div>
+            <div id="currentResults" class="mini-results"></div>
+            <div class="games-list" id="gamesList"></div>
+            <div id="nextMatchdayPreview" class="next-preview"></div>
+            <div class="button-row">
+              <button class="secondary-button" id="loadBetButton" type="button">
+                <i data-lucide="download"></i>
+                <span>Load my bet</span>
+              </button>
+              <button class="secondary-button" id="resetBetButton" type="button">
+                <i data-lucide="rotate-ccw"></i>
+                <span>Reset picks</span>
+              </button>
+              <button class="primary-button" id="saveBetButton" type="submit">
+                <i data-lucide="save"></i>
+                <span>Save my bet</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel" id="tablePanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Money table</p>
+              <h2>Standings</h2>
+            </div>
+            <button class="ghost-button" id="recalculateButton" type="button"><i data-lucide="calculator"></i>Calculate</button>
+          </div>
+          <div id="standingsList" class="standings-list"></div>
+          <h3 class="subhead">Settlement</h3>
+          <div id="settlementList" class="settlement-list"></div>
+          <h3 class="subhead">Daily Results</h3>
+          <div id="dailyList" class="daily-list"></div>
+        </section>
+
+        <section class="panel" id="historyPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Saved picks</p>
+              <h2>Bet History</h2>
+            </div>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+
+        <section class="panel" id="resultsPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Scores</p>
+              <h2>All Results</h2>
+            </div>
+          </div>
+          <div id="resultsList" class="results-list"></div>
+        </section>
+
+        <section class="panel" id="adminPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Setup</p>
+              <h2>Admin</h2>
+            </div>
+          </div>
+
+          <div class="admin-grid" id="adminLock">
+            <label class="field">
+              <span>Admin PIN</span>
+              <input id="adminPin" autocomplete="off" inputmode="numeric" placeholder="Enter admin PIN" />
+            </label>
+            <button class="primary-button" id="unlockAdminButton" type="button">
+              <i data-lucide="lock-keyhole-open"></i>
+              <span>Unlock admin</span>
+            </button>
+          </div>
+
+          <div class="admin-grid hidden" id="adminContent">
+            <label class="field">
+              <span>Entry amount per selected game</span>
+              <input id="entryAmount" type="number" min="0" step="0.25" />
+            </label>
+            <label class="field">
+              <span>Maximum players</span>
+              <input id="maxPlayersInput" type="number" min="1" max="7" step="1" />
+            </label>
+            <div>
+              <h3 class="subhead">Registered Players</h3>
+              <div id="adminPlayersList" class="small"></div>
+            </div>
+            <div>
+              <h3 class="subhead">Point Values</h3>
+              <div id="adminRules" class="admin-rules"></div>
+            </div>
+            <button class="primary-button" id="saveSettingsButton" type="button">
+              <i data-lucide="check"></i>
+              <span>Save settings</span>
+            </button>
+
+            <details class="admin-details">
+              <summary>Enter or Correct Results</summary>
+              <div class="admin-results" id="adminResults"></div>
+            </details>
+          </div>
+        </section>
+
+        <section class="panel" id="rulesPanel">
+          <div class="rules">
+            <h2>How To Play</h2>
+            <p>Each selected game costs the entry amount. A player can pick one game or many games from the active match day, but only one pick is allowed per game. Bets lock 15 minutes before the first game of that match day starts.</p>
+            <p>Every completed match day adds entry money into one total pot. Total points decide each player's share of that pot. Final balance is share of pot minus entry money paid.</p>
+            <div class="rules-grid">
+              <article><strong>Result</strong><span>1, X, or 2 gives 4 points when correct.</span></article>
+              <article><strong>Goals</strong><span>O2 or U2 gives 3 points when correct.</span></article>
+              <article><strong>Both teams</strong><span>GG or NG gives 2 points when correct.</span></article>
+              <article><strong>Double</strong><span>1X, X2, or 12 gives 1 point when correct.</span></article>
+            </div>
+            <p><strong>Result:</strong> 1 = Team 1 wins, X = tie, 2 = Team 2 wins.</p>
+            <p><strong>Double:</strong> 1X, X2, or 12. <strong>Goals:</strong> O2 is more than 2 total goals, U2 is 2 or fewer total goals. <strong>GG:</strong> both teams score. <strong>NG:</strong> one or both teams do not score.</p>
+            <p>June 10 friendly games stay in history for testing, but they do not count for points or money.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
