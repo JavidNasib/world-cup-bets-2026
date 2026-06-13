@@ -62,17 +62,17 @@
               <span>Your PIN for edits</span>
               <input id="playerPin" autocomplete="off" inputmode="numeric" minlength="4" placeholder="4+ digits or letters" required />
             </label>
-            <p class="form-help">To edit before the cutoff, enter the same name and PIN, load your bet, change picks, then save again.</p>
+            <button class="secondary-button login-button" id="loadBetButton" type="button">
+              <i data-lucide="log-in"></i>
+              <span>Login to edit saved bet</span>
+            </button>
+            <p class="form-help">If you already saved a bet, enter the same name and PIN, tap Login, change picks, then save again.</p>
             <div class="rule-strip" id="dayRuleStrip"></div>
             <div class="bet-cost" id="betCost"></div>
             <div id="currentResults" class="mini-results"></div>
             <div class="games-list" id="gamesList"></div>
             <div id="nextMatchdayPreview" class="next-preview"></div>
             <div class="button-row">
-              <button class="secondary-button" id="loadBetButton" type="button">
-                <i data-lucide="download"></i>
-                <span>Load my bet</span>
-              </button>
               <button class="secondary-button" id="resetBetButton" type="button">
                 <i data-lucide="rotate-ccw"></i>
                 <span>Reset picks</span>

@@ -950,7 +950,7 @@ function bindEvents() {
     }
     selections = { ...(getBetPicks(existing) || {}) };
     renderBetPanel();
-    showToast("Saved bet loaded.");
+    showToast("Login successful. Your saved picks are loaded.");
   });
 
   $("unlockAdminButton").addEventListener("click", async () => {
@@ -1516,7 +1516,7 @@ function bindEvents() {
     }
     selections = { ...(getBetPicks(existing) || {}) };
     renderBetPanel();
-    showToast("Saved bet loaded.");
+    showToast("Login successful. Your saved picks are loaded.");
   });
 
   $("unlockAdminButton").addEventListener("click", async () => {
