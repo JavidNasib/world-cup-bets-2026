@@ -79,7 +79,8 @@ let state = {
     players: [],
     maxPlayers: 7,
     rules: DEFAULT_RULES,
-    pointValues: DEFAULT_POINT_VALUES
+    pointValues: DEFAULT_POINT_VALUES,
+    gameBetting: {}
   },
   games: seedGames(),
   bets: {}
@@ -278,6 +279,10 @@ function allowedOptions(kind) {
 
 function pointValues() {
   return { ...DEFAULT_POINT_VALUES, ...(state.settings.pointValues || {}) };
+}
+
+function gameBettingStatus(game) {
+  return state.settings.gameBetting?.[game?.id] || "auto";
 }
 
 function pickPoints(pick) {
@@ -982,6 +987,39 @@ function bindEvents() {
     showToast("Settings saved.");
   });
 
+  $("adminMatchControls").addEventListener("change", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const input = event.target;
+    const gameId = input.dataset.bettingGame;
+    if (!gameId) return;
+    state.settings.gameBetting ||= {};
+    if (input.value === "auto") delete state.settings.gameBetting[gameId];
+    else state.settings.gameBetting[gameId] = input.value;
+    await persist();
+    renderAll();
+    showToast("Match betting control saved.");
+  });
+
+  $("adminBetResetList").addEventListener("click", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const button = event.target.closest("button[data-reset-date]");
+    if (!button) return;
+    const date = button.dataset.resetDate;
+    const player = button.dataset.resetPlayer;
+    if (!date || !player || !state.bets[date]?.[player]) return;
+    delete state.bets[date][player];
+    if (!Object.keys(state.bets[date]).length) delete state.bets[date];
+    if (db) {
+      await db.from("bets").delete().eq("match_date", date).eq("player_name", player);
+      await db.from("settings").upsert({ id: "main", data: state.settings, updated_at: new Date().toISOString() });
+    } else {
+      saveLocal();
+    }
+    selections = {};
+    renderAll();
+    showToast(`${player}'s bet was reset for ${prettyDate(date)}.`);
+  });
+
   $("adminResults").addEventListener("change", async (event) => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
     const input = event.target;
@@ -1029,7 +1067,10 @@ function completedGame(game) {
 }
 
 function isGameLocked(game) {
+  const status = gameBettingStatus(game);
+  if (status === "closed") return true;
   if (!game?.time) return false;
+  if (status === "open") return Date.now() >= new Date(game.time).getTime();
   if (SPECIAL_GAME_LOCK_OVERRIDES.has(String(game.id))) {
     return Date.now() >= new Date(game.time).getTime();
   }
@@ -1169,6 +1210,41 @@ function renderAdmin() {
       <input data-point-kind="${key}" type="number" min="0" step="1" value="${values[key]}" />
     </label>`)
     .join("");
+  $("adminMatchControls").innerHTML = Object.keys(DATE_COUNTS)
+    .map((date) => {
+      const rows = (state.games[date] || [])
+        .map((game) => {
+          const status = gameBettingStatus(game);
+          const result = completedGame(game) ? `Final ${game.score1}-${game.score2}` : (isGameLocked(game) ? "Locked" : "Open");
+          return `<div class="admin-match-row">
+            <div>
+              <strong>${prettyDate(date)} &middot; G${game.index}</strong>
+              <div class="small">${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)} &middot; ${result}</div>
+            </div>
+            <select data-betting-game="${game.id}" aria-label="Betting status for ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}">
+              <option value="auto" ${status === "auto" ? "selected" : ""}>Auto</option>
+              <option value="open" ${status === "open" ? "selected" : ""}>Open</option>
+              <option value="closed" ${status === "closed" ? "selected" : ""}>Closed</option>
+            </select>
+          </div>`;
+        })
+        .join("");
+      return rows ? `<article class="game-card"><div class="game-meta"><strong>${prettyDate(date)}</strong><span>${rows ? "" : "No games"}</span></div>${rows}</article>` : "";
+    })
+    .join("") || `<div class="empty">No games available yet.</div>`;
+  $("adminBetResetList").innerHTML = Object.keys(DATE_COUNTS)
+    .map((date) => {
+      const players = Object.keys(state.bets[date] || {}).sort((a, b) => a.localeCompare(b));
+      if (!players.length) return "";
+      return `<article class="game-card">
+        <div class="game-meta"><strong>${prettyDate(date)}</strong><span>${players.length} saved</span></div>
+        ${players.map((player) => `<div class="admin-reset-row">
+          <div><strong>${escapeHtml(player)}</strong><div class="small">${selectedPickCount(getBetPicks(state.bets[date][player]))} pick${selectedPickCount(getBetPicks(state.bets[date][player])) === 1 ? "" : "s"} saved</div></div>
+          <button class="danger-button" type="button" data-reset-date="${date}" data-reset-player="${escapeHtml(player)}">Reset bet</button>
+        </div>`).join("")}
+      </article>`;
+    })
+    .join("") || `<div class="empty">No saved bets to reset.</div>`;
   $("adminResults").innerHTML = Object.keys(DATE_COUNTS)
     .map((date) => {
       const rows = (state.games[date] || [])
@@ -1468,6 +1544,39 @@ function bindEvents() {
     await persist();
     renderAll();
     showToast("Settings saved.");
+  });
+
+  $("adminMatchControls").addEventListener("change", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const input = event.target;
+    const gameId = input.dataset.bettingGame;
+    if (!gameId) return;
+    state.settings.gameBetting ||= {};
+    if (input.value === "auto") delete state.settings.gameBetting[gameId];
+    else state.settings.gameBetting[gameId] = input.value;
+    await persist();
+    renderAll();
+    showToast("Match betting control saved.");
+  });
+
+  $("adminBetResetList").addEventListener("click", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const button = event.target.closest("button[data-reset-date]");
+    if (!button) return;
+    const date = button.dataset.resetDate;
+    const player = button.dataset.resetPlayer;
+    if (!date || !player || !state.bets[date]?.[player]) return;
+    delete state.bets[date][player];
+    if (!Object.keys(state.bets[date]).length) delete state.bets[date];
+    if (db) {
+      await db.from("bets").delete().eq("match_date", date).eq("player_name", player);
+      await db.from("settings").upsert({ id: "main", data: state.settings, updated_at: new Date().toISOString() });
+    } else {
+      saveLocal();
+    }
+    selections = {};
+    renderAll();
+    showToast(`${player}'s bet was reset for ${prettyDate(date)}.`);
   });
 
   $("adminResults").addEventListener("change", async (event) => {

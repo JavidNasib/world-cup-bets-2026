@@ -288,6 +288,44 @@ textarea {
   gap: 8px;
 }
 
+.admin-match-controls,
+.admin-bet-reset-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-match-row,
+.admin-reset-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-match-row select {
+  min-width: 112px;
+  padding: 9px 8px;
+}
+
+.danger-button {
+  border: 1px solid rgba(180, 35, 24, 0.28);
+  background: #fff4f2;
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  border-color: var(--danger);
+}
+
 .admin-rule-row {
   display: grid;
   grid-template-columns: 1fr repeat(3, minmax(62px, 86px));
