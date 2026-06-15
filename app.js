@@ -60,7 +60,8 @@ const DEFAULT_POINT_VALUES = {
   result: 4,
   goals: 3,
   both: 2,
-  double: 1
+  double: 1,
+  perfectDayBonus: 4
 };
 const DEFAULT_RULES = {
   1: { result: 1, goals: 1, double: 0 },
@@ -288,6 +289,10 @@ function gameBettingStatus(game) {
 function pickPoints(pick) {
   const kind = pickKind(pick);
   return kind ? Number(pointValues()[kind]) || 0 : 0;
+}
+
+function perfectDayBonus() {
+  return Number(pointValues().perfectDayBonus) || 0;
 }
 
 function getBetPicks(bet) {
@@ -1103,10 +1108,13 @@ function countedDate(date) {
 function dailyPlayerPoints(date, player) {
   const games = state.games[date] || [];
   const picks = getBetPicks(state.bets[date]?.[player]) || {};
-  return games.reduce((sum, game) => {
+  const selectedGames = games.filter((game) => picks[game.id]);
+  const basePoints = games.reduce((sum, game) => {
     const pick = picks[game.id];
     return completedGame(game) && pickWins(pick, game) ? sum + pickPoints(pick) : sum;
   }, 0);
+  const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && pickWins(picks[game.id], game));
+  return games.length > 1 && allSelectedCorrect ? basePoints + perfectDayBonus() : basePoints;
 }
 
 function renderBetPanel() {
@@ -1121,7 +1129,8 @@ function renderBetPanel() {
     `<span class="rule-pill">Result ${values.result} pts</span>`,
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
-    `<span class="rule-pill">Double ${values.double} pt</span>`
+    `<span class="rule-pill">Double ${values.double} pt</span>`,
+    `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
   $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
   $("currentResults").innerHTML = renderMiniResults(date);
@@ -1204,7 +1213,8 @@ function renderAdmin() {
     ["result", "Result 1/X/2"],
     ["goals", "Goals O2/U2"],
     ["both", "GG/NG"],
-    ["double", "Double 1X/X2/12"]
+    ["double", "Double 1X/X2/12"],
+    ["perfectDayBonus", "All selected correct bonus"]
   ].map(([key, label]) => `<label class="field point-field">
       <span>${label}</span>
       <input data-point-kind="${key}" type="number" min="0" step="1" value="${values[key]}" />
