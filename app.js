@@ -61,7 +61,8 @@ const DEFAULT_POINT_VALUES = {
   goals: 3,
   both: 2,
   double: 1,
-  perfectDayBonus: 4
+  perfectDayBonus: 4,
+  soloGameBonus: 2
 };
 const DEFAULT_RULES = {
   1: { result: 1, goals: 1, double: 0 },
@@ -293,6 +294,20 @@ function pickPoints(pick) {
 
 function perfectDayBonus() {
   return Number(pointValues().perfectDayBonus) || 0;
+}
+
+function soloGameBonus() {
+  return Number(pointValues().soloGameBonus) || 0;
+}
+
+function correctPlayersForGame(date, game) {
+  const dayBets = state.bets[date] || {};
+  return Object.entries(dayBets)
+    .filter(([, bet]) => {
+      const picks = getBetPicks(bet) || {};
+      return completedGame(game) && pickWins(picks[game.id], game);
+    })
+    .map(([player]) => player);
 }
 
 function getBetPicks(bet) {
@@ -1111,7 +1126,10 @@ function dailyPlayerPoints(date, player) {
   const selectedGames = games.filter((game) => picks[game.id]);
   const basePoints = games.reduce((sum, game) => {
     const pick = picks[game.id];
-    return completedGame(game) && pickWins(pick, game) ? sum + pickPoints(pick) : sum;
+    if (!completedGame(game) || !pickWins(pick, game)) return sum;
+    const correctPlayers = correctPlayersForGame(date, game);
+    const soloBonus = correctPlayers.length === 1 && correctPlayers[0] === player ? soloGameBonus() : 0;
+    return sum + pickPoints(pick) + soloBonus;
   }, 0);
   const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && pickWins(picks[game.id], game));
   return games.length > 1 && allSelectedCorrect ? basePoints + perfectDayBonus() : basePoints;
@@ -1130,6 +1148,7 @@ function renderBetPanel() {
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
+    `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
   $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
@@ -1214,6 +1233,7 @@ function renderAdmin() {
     ["goals", "Goals O2/U2"],
     ["both", "GG/NG"],
     ["double", "Double 1X/X2/12"],
+    ["soloGameBonus", "Solo correct game bonus"],
     ["perfectDayBonus", "All selected correct bonus"]
   ].map(([key, label]) => `<label class="field point-field">
       <span>${label}</span>
