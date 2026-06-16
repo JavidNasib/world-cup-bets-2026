@@ -72,7 +72,7 @@ const DEFAULT_RULES = {
   4: { result: 1, goals: 2, double: 1 },
   6: { result: 2, goals: 0, double: 4 }
 };
-const PAYOUT_SHARES = [0.6, 0.3, 0.1];
+const PAYOUT_SHARES = [0.5, 0.3, 0.2];
 
 let db = null;
 let adminUnlocked = false;
@@ -1470,12 +1470,12 @@ function renderTables() {
     ? `<div class="pot-summary">
         <div><span>Total pot</span><strong>${money(calc.totalPot)}</strong></div>
         <div><span>Total points</span><strong>${calc.totalPoints}</strong></div>
-        <div><span>1st place payout</span><strong>60%</strong></div>
+        <div><span>1st place payout</span><strong>50%</strong></div>
         <div><span>2nd place payout</span><strong>30%</strong></div>
-        <div><span>3rd place payout</span><strong>10%</strong></div>
+        <div><span>3rd place payout</span><strong>20%</strong></div>
         <div><span>Distributed to winners</span><strong>${money(distributed)}</strong></div>
       </div>
-      <div class="table-note">Money goes to the top 3 point places: 1st gets 60% of the pot, 2nd gets 30%, and 3rd gets 10%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
+      <div class="table-note">Money goes to the top 3 point places: 1st gets 50% of the pot, 2nd gets 30%, and 3rd gets 20%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
       <div class="standings-table">
         <div class="standings-row standings-head">
           <span>Player</span>
