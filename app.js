@@ -4,6 +4,7 @@ const ADMIN_PIN_HASH = window.APP_CONFIG?.ADMIN_PIN_HASH || "";
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
 const ESPN_FRIENDLY_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/scoreboard";
 const STORAGE_KEY = "worldCupPredictionBank.v1";
+const ACTIVE_TAB_KEY = "worldCupPredictionBank.activeTab";
 const DATE_COUNTS = {
   "2026-06-10": 3,
   "2026-06-11": 2,
@@ -332,6 +333,20 @@ async function hashPin(pin) {
 
 function getActiveDate() {
   return $("dateSelect").value || nearestPlayableDate();
+}
+
+function activateTab(tabName, remember = true) {
+  const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
+  const panel = $(`${tabName}Panel`);
+  if (!tab || !panel) return;
+  document.querySelectorAll(".tab, .panel").forEach((item) => item.classList.remove("active"));
+  tab.classList.add("active");
+  panel.classList.add("active");
+  if (remember) localStorage.setItem(ACTIVE_TAB_KEY, tabName);
+}
+
+function restoreActiveTab() {
+  activateTab(localStorage.getItem(ACTIVE_TAB_KEY) || "bet", false);
 }
 
 function firstGameTime(date) {
@@ -913,9 +928,7 @@ function validateSelections(date) {
 function bindEvents() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab, .panel").forEach((item) => item.classList.remove("active"));
-      tab.classList.add("active");
-      $(`${tab.dataset.tab}Panel`).classList.add("active");
+      activateTab(tab.dataset.tab);
     });
   });
 
@@ -1435,8 +1448,10 @@ function renderTables() {
             .sort((a, b) => b[1] - a[1])
             .map(([player]) => {
               const detail = day.pointDetails?.[player] || { base: 0, bonus: 0, total: 0 };
-              const bonusText = detail.bonus > 0 ? ` + ${detail.bonus} bonus` : "";
-              return `<span><strong>${escapeHtml(player)}</strong> ${detail.base} pts${bonusText} = ${detail.total} pts</span>`;
+              const pointsText = detail.bonus > 0
+                ? `${detail.base} pts + ${detail.bonus} bonus = ${detail.total} pts`
+                : `${detail.total} pts`;
+              return `<span><strong>${escapeHtml(player)}</strong> ${pointsText}</span>`;
             })
             .join("")}</div>`
         : day.testOnly ? "Test day - not counted" : "No points yet";
@@ -1530,9 +1545,7 @@ function validateSelections(date) {
 function bindEvents() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab, .panel").forEach((item) => item.classList.remove("active"));
-      tab.classList.add("active");
-      $(`${tab.dataset.tab}Panel`).classList.add("active");
+      activateTab(tab.dataset.tab);
     });
   });
 
@@ -1684,6 +1697,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initStorage();
   bindEvents();
   renderAll();
+  restoreActiveTab();
   await syncFixtures(true);
+  restoreActiveTab();
   scheduleFinalResultSync();
 });
