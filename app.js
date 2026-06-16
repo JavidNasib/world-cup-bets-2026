@@ -1356,21 +1356,30 @@ function pickWins(pick, game) {
 function renderTables() {
   const calc = calculate();
   const rows = Object.entries(calc.totals).sort((a, b) => b[1].points - a[1].points || b[1].balance - a[1].balance);
+  const pointValue = calc.totalPoints > 0 ? calc.totalPot / calc.totalPoints : 0;
+  const distributed = rows.reduce((sum, [, total]) => sum + total.winnings, 0);
   $("standingsList").innerHTML = rows.length
-    ? `<div class="standings-table">
+    ? `<div class="pot-summary">
+        <div><span>Total pot</span><strong>${money(calc.totalPot)}</strong></div>
+        <div><span>Total points</span><strong>${calc.totalPoints}</strong></div>
+        <div><span>Each point worth</span><strong>${money(pointValue)}</strong></div>
+        <div><span>Distributed to players</span><strong>${money(distributed)}</strong></div>
+      </div>
+      <div class="table-note">Pot share = player points / total points × total pot. Net = pot share - entry paid.</div>
+      <div class="standings-table">
         <div class="standings-row standings-head">
           <span>Player</span>
           <span>Points</span>
-          <span>Entry</span>
-          <span>Won</span>
-          <span>Balance</span>
+          <span>Entry paid</span>
+          <span>Pot share</span>
+          <span>Net</span>
         </div>
         ${rows.map(([player, total], index) => `<div class="standings-row">
           <span><strong>${index + 1}. ${escapeHtml(player)}</strong></span>
           <span class="points-value">${total.points}</span>
           <span>${money(total.entries)}</span>
           <span>${money(total.winnings)}</span>
-          <span class="money ${total.balance >= 0 ? "positive" : "negative"}">${money(total.balance)}</span>
+          <span class="money ${total.balance >= 0 ? "positive" : "negative"}">${total.balance >= 0 ? "Receives " : "Sends "}${money(Math.abs(total.balance))}</span>
         </div>`).join("")}
       </div>`
     : `<div class="empty">Add players by saving bets.</div>`;
