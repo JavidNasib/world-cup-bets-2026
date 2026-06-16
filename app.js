@@ -77,6 +77,7 @@ const PAYOUT_SHARES = [0.5, 0.3, 0.2];
 let db = null;
 let adminUnlocked = false;
 let finalSyncTimer = null;
+let winnerBannerReady = false;
 let state = {
   settings: {
     entryAmount: 1,
@@ -1429,6 +1430,11 @@ function findDailySpotlightWinner(calc) {
 function renderDailyWinnerBanner() {
   const banner = $("dailyWinnerBanner");
   if (!banner) return;
+  if (!winnerBannerReady) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
   const spotlight = findDailySpotlightWinner(calculate());
   if (!spotlight) {
     banner.classList.add("hidden");
@@ -1444,7 +1450,7 @@ function renderDailyWinnerBanner() {
     <div class="winner-label">${label}</div>
     <div class="winner-name">${escapeHtml(spotlight.player)}</div>
     <div class="winner-meta">${prettyDate(spotlight.date)} · ${bonusText}</div>
-    <div class="winner-meta">${spotlight.tieNote}</div>`;
+    `;
 }
 
 function pickWins(pick, game) {
@@ -1756,7 +1762,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
   renderAll();
   restoreActiveTab();
-  await syncFixtures(true);
+  try {
+    await syncFixtures(true);
+  } finally {
+    winnerBannerReady = true;
+    renderAll();
+  }
   restoreActiveTab();
   scheduleFinalResultSync();
 });
