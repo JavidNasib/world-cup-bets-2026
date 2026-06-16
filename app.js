@@ -189,6 +189,13 @@ function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
 }
 
+function signedMoney(value) {
+  const amount = Number(value) || 0;
+  if (amount > 0) return `+${money(amount)}`;
+  if (amount < 0) return `-${money(Math.abs(amount))}`;
+  return money(0);
+}
+
 function prettyDate(date) {
   return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
     weekday: "short",
@@ -1122,18 +1129,25 @@ function countedDate(date) {
 }
 
 function dailyPlayerPoints(date, player) {
+  return dailyPlayerPointBreakdown(date, player).total;
+}
+
+function dailyPlayerPointBreakdown(date, player) {
   const games = state.games[date] || [];
   const picks = getBetPicks(state.bets[date]?.[player]) || {};
   const selectedGames = games.filter((game) => picks[game.id]);
+  let soloBonusPoints = 0;
   const basePoints = games.reduce((sum, game) => {
     const pick = picks[game.id];
     if (!completedGame(game) || !pickWins(pick, game)) return sum;
     const correctPlayers = correctPlayersForGame(date, game);
-    const soloBonus = correctPlayers.length === 1 && correctPlayers[0] === player ? soloGameBonus() : 0;
-    return sum + pickPoints(pick) + soloBonus;
+    if (correctPlayers.length === 1 && correctPlayers[0] === player) soloBonusPoints += soloGameBonus();
+    return sum + pickPoints(pick);
   }, 0);
   const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && pickWins(picks[game.id], game));
-  return games.length > 1 && allSelectedCorrect ? basePoints + perfectDayBonus() : basePoints;
+  const perfectBonusPoints = games.length > 1 && allSelectedCorrect ? perfectDayBonus() : 0;
+  const bonusPoints = soloBonusPoints + perfectBonusPoints;
+  return { base: basePoints, soloBonus: soloBonusPoints, perfectBonus: perfectBonusPoints, bonus: bonusPoints, total: basePoints + bonusPoints };
 }
 
 function renderBetPanel() {
@@ -1305,9 +1319,11 @@ function calculate() {
     const entries = Object.fromEntries(dayPlayers.map((player) => [player, selectedPickCount(getBetPicks(dayBets[player])) * entry]));
     const dayEntryTotal = Object.values(entries).reduce((sum, value) => sum + value, 0);
     const testOnly = !countedDate(date);
+    const pointDetails = Object.fromEntries(dayPlayers.map((player) => [player, dailyPlayerPointBreakdown(date, player)]));
+    const points = Object.fromEntries(Object.entries(pointDetails).map(([player, detail]) => [player, detail.total]));
 
     if (!complete || testOnly) {
-      daily.push({ date, bank: testOnly ? 0 : dayEntryTotal, winners: [], complete, testOnly, points: {} });
+      daily.push({ date, bank: testOnly ? 0 : dayEntryTotal, winners: [], complete, testOnly, points, pointDetails });
       return;
     }
 
@@ -1316,13 +1332,11 @@ function calculate() {
       totals[player].entries += entries[player] || 0;
     });
 
-    const points = Object.fromEntries(dayPlayers.map((player) => {
-      const total = dailyPlayerPoints(date, player);
-      totals[player].points += total;
-      return [player, total];
-    }));
+    dayPlayers.forEach((player) => {
+      totals[player].points += points[player] || 0;
+    });
 
-    daily.push({ date, bank: dayEntryTotal, winners: [], complete, testOnly, points });
+    daily.push({ date, bank: dayEntryTotal, winners: [], complete, testOnly, points, pointDetails });
   });
 
   const totalPoints = Object.values(totals).reduce((sum, total) => sum + total.points, 0);
@@ -1404,7 +1418,7 @@ function renderTables() {
           <span class="points-value">${total.points}</span>
           <span>${money(total.entries)}</span>
           <span>${money(total.winnings)}</span>
-          <span class="money ${total.balance >= 0 ? "positive" : "negative"}">${total.balance >= 0 ? "Receives " : "Sends "}${money(Math.abs(total.balance))}</span>
+          <span class="money ${total.balance >= 0 ? "positive" : "negative"}">${signedMoney(total.balance)}</span>
         </div>`).join("")}
       </div>`
     : `<div class="empty">Add players by saving bets.</div>`;
@@ -1414,17 +1428,21 @@ function renderTables() {
     : `<div class="empty">No payments needed yet.</div>`;
 
   $("dailyList").innerHTML = calc.daily
-    .filter((day) => day.complete || day.testOnly)
+    .filter((day) => day.complete || day.testOnly || Object.values(day.points || {}).some((points) => points > 0))
     .map((day) => {
       const pointText = Object.entries(day.points || {}).length
         ? `<div class="daily-points">${Object.entries(day.points)
             .sort((a, b) => b[1] - a[1])
-            .map(([player, points]) => `<span><strong>${escapeHtml(player)}</strong> ${points} pts</span>`)
+            .map(([player]) => {
+              const detail = day.pointDetails?.[player] || { base: 0, bonus: 0, total: 0 };
+              const bonusText = detail.bonus > 0 ? ` + ${detail.bonus} bonus` : "";
+              return `<span><strong>${escapeHtml(player)}</strong> ${detail.base} pts${bonusText} = ${detail.total} pts</span>`;
+            })
             .join("")}</div>`
         : day.testOnly ? "Test day - not counted" : "No points yet";
       return `<article class="daily-card">
         <strong>${prettyDate(day.date)}${day.testOnly ? " (test)" : ""}</strong>
-        <div class="small">Entries ${money(day.bank)} &middot; ${day.testOnly ? "Not counted" : "Added to total pot"}</div>
+        <div class="small">Entries ${money(day.bank)} &middot; ${day.testOnly ? "Not counted" : day.complete ? "Added to total pot" : "In progress"}</div>
         <div class="small">${pointText}</div>
       </article>`;
     })

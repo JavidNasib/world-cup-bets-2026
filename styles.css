@@ -624,6 +624,7 @@ textarea {
   border-radius: 999px;
   background: var(--soft);
   color: var(--ink);
+  line-height: 1.25;
 }
 
 .small {
