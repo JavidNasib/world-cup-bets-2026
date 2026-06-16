@@ -523,7 +523,7 @@ textarea {
 
 .pot-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -876,7 +876,7 @@ textarea {
   }
 
   .standings-row span:nth-child(4)::before {
-    content: "Pot share: ";
+    content: "Payout: ";
     color: var(--muted);
     font-size: 0.8rem;
   }

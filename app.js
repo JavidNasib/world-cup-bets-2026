@@ -71,6 +71,7 @@ const DEFAULT_RULES = {
   4: { result: 1, goals: 2, double: 1 },
   6: { result: 2, goals: 0, double: 4 }
 };
+const PAYOUT_SHARES = [0.7, 0.3];
 
 let db = null;
 let adminUnlocked = false;
@@ -1325,17 +1326,41 @@ function calculate() {
   });
 
   const totalPoints = Object.values(totals).reduce((sum, total) => sum + total.points, 0);
-  if (totalPoints > 0) {
-    players.forEach((player) => {
-      totals[player].winnings = (totals[player].points / totalPoints) * totalPot;
-    });
-  }
+  const payoutWinners = assignTopPlacePayouts(totals, totalPot);
 
   players.forEach((player) => {
     totals[player].balance = totals[player].winnings - totals[player].entries;
   });
 
-  return { players, totals, daily, currentRollover: 0, totalPot, totalPoints, settlements: settlements(totals) };
+  return { players, totals, daily, currentRollover: 0, totalPot, totalPoints, payoutWinners, settlements: settlements(totals) };
+}
+
+function assignTopPlacePayouts(totals, totalPot) {
+  Object.values(totals).forEach((total) => {
+    total.winnings = 0;
+  });
+  if (!totalPot) return [];
+  const ranked = Object.entries(totals)
+    .filter(([, total]) => total.points > 0)
+    .sort((a, b) => b[1].points - a[1].points);
+  const winners = [];
+  let rankIndex = 0;
+  while (rankIndex < ranked.length && rankIndex < PAYOUT_SHARES.length) {
+    const points = ranked[rankIndex][1].points;
+    const group = ranked.slice(rankIndex).filter(([, total]) => total.points === points);
+    const prizePool = PAYOUT_SHARES
+      .slice(rankIndex, Math.min(rankIndex + group.length, PAYOUT_SHARES.length))
+      .reduce((sum, share) => sum + share, 0) * totalPot;
+    if (prizePool > 0) {
+      const share = prizePool / group.length;
+      group.forEach(([player, total]) => {
+        total.winnings = share;
+        winners.push({ player, points, payout: share, place: rankIndex + 1 });
+      });
+    }
+    rankIndex += group.length;
+  }
+  return winners;
 }
 
 function pickWins(pick, game) {
@@ -1356,22 +1381,22 @@ function pickWins(pick, game) {
 function renderTables() {
   const calc = calculate();
   const rows = Object.entries(calc.totals).sort((a, b) => b[1].points - a[1].points || b[1].balance - a[1].balance);
-  const pointValue = calc.totalPoints > 0 ? calc.totalPot / calc.totalPoints : 0;
   const distributed = rows.reduce((sum, [, total]) => sum + total.winnings, 0);
   $("standingsList").innerHTML = rows.length
     ? `<div class="pot-summary">
         <div><span>Total pot</span><strong>${money(calc.totalPot)}</strong></div>
         <div><span>Total points</span><strong>${calc.totalPoints}</strong></div>
-        <div><span>Each point worth</span><strong>${money(pointValue)}</strong></div>
-        <div><span>Distributed to players</span><strong>${money(distributed)}</strong></div>
+        <div><span>1st place payout</span><strong>70%</strong></div>
+        <div><span>2nd place payout</span><strong>30%</strong></div>
+        <div><span>Distributed to winners</span><strong>${money(distributed)}</strong></div>
       </div>
-      <div class="table-note">Pot share = player points / total points × total pot. Net = pot share - entry paid.</div>
+      <div class="table-note">Money goes to the top 2 point places: 1st gets 70% of the pot and 2nd gets 30%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
       <div class="standings-table">
         <div class="standings-row standings-head">
           <span>Player</span>
           <span>Points</span>
           <span>Entry paid</span>
-          <span>Pot share</span>
+          <span>Payout</span>
           <span>Net</span>
         </div>
         ${rows.map(([player, total], index) => `<div class="standings-row">
