@@ -72,7 +72,7 @@ const DEFAULT_RULES = {
   4: { result: 1, goals: 2, double: 1 },
   6: { result: 2, goals: 0, double: 4 }
 };
-const PAYOUT_SHARES = [0.7, 0.3];
+const PAYOUT_SHARES = [0.6, 0.3, 0.1];
 
 let db = null;
 let adminUnlocked = false;
@@ -636,6 +636,7 @@ function fromEspnEvent(event, date, index) {
 
 function renderAll() {
   renderMetrics();
+  renderDailyWinnerBanner();
   renderDates();
   renderBetPanel();
   renderAdmin();
@@ -855,19 +856,6 @@ function renderTables() {
   $("settlementList").innerHTML = calc.settlements.length
     ? calc.settlements.map((row) => `<article class="settlement-card"><strong>${escapeHtml(row.from)}</strong> sends <strong>${money(row.amount)}</strong> to <strong>${escapeHtml(row.to)}</strong></article>`).join("")
     : `<div class="empty">No payments needed yet.</div>`;
-
-  const spotlight = findDailySpotlightWinner(calc);
-  $("todayWinnerList").innerHTML = spotlight
-    ? `<article class="today-winner-card">
-        <div>
-          <p class="eyebrow">${spotlight.isToday ? (spotlight.complete ? "Today's Winner" : "Today's Leader") : "Latest Winner"}</p>
-          <h3>${escapeHtml(spotlight.player)}</h3>
-          <div class="small">${prettyDate(spotlight.date)} &middot; ${spotlight.points} pts today${spotlight.todayBonus ? ` (${spotlight.todayBase} pts + ${spotlight.todayBonus} bonus)` : ""}</div>
-          <div class="small">${spotlight.tieNote}</div>
-        </div>
-        <strong>${spotlight.points} pts</strong>
-      </article>`
-    : `<div class="empty">Today's winner will appear after points are available.</div>`;
 
   $("dailyList").innerHTML = calc.daily
     .filter((day) => day.complete || day.winners.length)
@@ -1413,7 +1401,7 @@ function totalBonusPointsForPlayer(player) {
 function findDailySpotlightWinner(calc) {
   const today = todayKey();
   const todayDay = calc.daily.find((item) => item.date === today);
-  const day = todayDay && Object.values(todayDay.points || {}).some((points) => points > 0)
+  const day = todayDay?.complete && Object.values(todayDay.points || {}).some((points) => points > 0)
     ? todayDay
     : [...calc.daily].reverse().find((item) => item.complete && Object.values(item.points || {}).some((points) => points > 0));
   if (!day || !Object.values(day.points || {}).some((points) => points > 0)) return null;
@@ -1436,6 +1424,27 @@ function findDailySpotlightWinner(calc) {
     ? `Tie-breaker used: total points, then total bonus points.`
     : `Highest points for ${prettyDate(day.date)}.`;
   return { ...winner, date: day.date, complete: day.complete, isToday, tieNote };
+}
+
+function renderDailyWinnerBanner() {
+  const banner = $("dailyWinnerBanner");
+  if (!banner) return;
+  const spotlight = findDailySpotlightWinner(calculate());
+  if (!spotlight) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+  banner.classList.remove("hidden");
+  const label = spotlight.isToday ? "Today's Winner" : "Latest Daily Winner";
+  const bonusText = spotlight.todayBonus
+    ? `${spotlight.todayBase} pts + ${spotlight.todayBonus} bonus = ${spotlight.points} pts`
+    : `${spotlight.points} pts`;
+  banner.innerHTML = `<div class="winner-sparks" aria-hidden="true"></div>
+    <div class="winner-label">${label}</div>
+    <div class="winner-name">${escapeHtml(spotlight.player)}</div>
+    <div class="winner-meta">${prettyDate(spotlight.date)} · ${bonusText}</div>
+    <div class="winner-meta">${spotlight.tieNote}</div>`;
 }
 
 function pickWins(pick, game) {
@@ -1461,11 +1470,12 @@ function renderTables() {
     ? `<div class="pot-summary">
         <div><span>Total pot</span><strong>${money(calc.totalPot)}</strong></div>
         <div><span>Total points</span><strong>${calc.totalPoints}</strong></div>
-        <div><span>1st place payout</span><strong>70%</strong></div>
+        <div><span>1st place payout</span><strong>60%</strong></div>
         <div><span>2nd place payout</span><strong>30%</strong></div>
+        <div><span>3rd place payout</span><strong>10%</strong></div>
         <div><span>Distributed to winners</span><strong>${money(distributed)}</strong></div>
       </div>
-      <div class="table-note">Money goes to the top 2 point places: 1st gets 70% of the pot and 2nd gets 30%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
+      <div class="table-note">Money goes to the top 3 point places: 1st gets 60% of the pot, 2nd gets 30%, and 3rd gets 10%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
       <div class="standings-table">
         <div class="standings-row standings-head">
           <span>Player</span>
@@ -1487,19 +1497,6 @@ function renderTables() {
   $("settlementList").innerHTML = calc.settlements.length
     ? calc.settlements.map((row) => `<article class="settlement-card"><strong>${escapeHtml(row.from)}</strong> sends <strong>${money(row.amount)}</strong> to <strong>${escapeHtml(row.to)}</strong></article>`).join("")
     : `<div class="empty">No payments needed yet.</div>`;
-
-  const spotlight = findDailySpotlightWinner(calc);
-  $("todayWinnerList").innerHTML = spotlight
-    ? `<article class="today-winner-card">
-        <div>
-          <p class="eyebrow">${spotlight.isToday ? (spotlight.complete ? "Today's Winner" : "Today's Leader") : "Latest Winner"}</p>
-          <h3>${escapeHtml(spotlight.player)}</h3>
-          <div class="small">${prettyDate(spotlight.date)} &middot; ${spotlight.points} pts today${spotlight.todayBonus ? ` (${spotlight.todayBase} pts + ${spotlight.todayBonus} bonus)` : ""}</div>
-          <div class="small">${spotlight.tieNote}</div>
-        </div>
-        <strong>${spotlight.points} pts</strong>
-      </article>`
-    : `<div class="empty">Today's winner will appear after points are available.</div>`;
 
   $("dailyList").innerHTML = calc.daily
     .filter((day) => day.complete || day.testOnly || Object.values(day.points || {}).some((points) => points > 0))
