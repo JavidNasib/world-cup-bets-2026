@@ -64,7 +64,6 @@ const DEFAULT_POINT_VALUES = {
   double: 1,
   challenge2: 6,
   challenge3: 8,
-  challenge4: 10,
   perfectDayBonus: 4,
   soloGameBonus: 2
 };
@@ -314,7 +313,7 @@ function favoriteChallenge(game) {
 function favoriteChallengeOptions(game) {
   const challenge = favoriteChallenge(game);
   if (!challenge) return [];
-  return [2, 3, 4].map((margin) => `${challenge.side}H${margin}`);
+  return [2, 3].map((margin) => `${challenge.side}H${margin}`);
 }
 
 function pickLabel(pick, game) {
@@ -1284,7 +1283,7 @@ function renderBetPanel() {
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
-    `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3}/${values.challenge4} pts</span>`,
+    `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3} pts</span>`,
     `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
@@ -1378,7 +1377,6 @@ function renderAdmin() {
     ["double", "Double 1X/X2/12"],
     ["challenge2", "Favorite wins by 2+"],
     ["challenge3", "Favorite wins by 3+"],
-    ["challenge4", "Favorite wins by 4+"],
     ["soloGameBonus", "Solo correct game bonus"],
     ["perfectDayBonus", "All selected correct bonus"]
   ].map(([key, label]) => `<label class="field point-field">
@@ -1387,6 +1385,7 @@ function renderAdmin() {
     </label>`)
     .join("");
   $("adminFavoriteControls").innerHTML = Object.keys(DATE_COUNTS)
+    .filter((date) => date >= todayKey())
     .map((date) => {
       const rows = (state.games[date] || [])
         .map((game) => {
