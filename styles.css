@@ -415,6 +415,33 @@ textarea {
   padding: 9px 8px;
 }
 
+.admin-late-unlock,
+.admin-late-games {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.late-game-row,
+.admin-unlock-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-unlock-row {
+  grid-template-columns: 1fr auto;
+}
+
+.muted-row {
+  opacity: 0.58;
+}
+
 .danger-button {
   border: 1px solid rgba(180, 35, 24, 0.28);
   background: #fff4f2;
@@ -582,6 +609,19 @@ textarea {
 .team-row span:last-child {
   color: var(--muted);
   font-weight: 800;
+}
+
+.challenge-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 6px 9px;
+  border: 1px solid rgba(179, 38, 58, 0.28);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(179, 38, 58, 0.12), rgba(123, 29, 255, 0.12));
+  color: #8a1236;
+  font-size: 0.78rem;
+  font-weight: 950;
 }
 
 .pick-grid {
@@ -979,6 +1019,11 @@ textarea {
   .history-page-button {
     width: 100%;
     min-width: 0;
+  }
+
+  .admin-match-row,
+  .admin-unlock-row {
+    grid-template-columns: 1fr;
   }
 
   .pot-summary {

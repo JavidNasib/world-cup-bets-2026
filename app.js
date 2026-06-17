@@ -62,6 +62,9 @@ const DEFAULT_POINT_VALUES = {
   goals: 3,
   both: 2,
   double: 1,
+  challenge2: 6,
+  challenge3: 8,
+  challenge4: 10,
   perfectDayBonus: 4,
   soloGameBonus: 2
 };
@@ -79,6 +82,7 @@ let adminUnlocked = false;
 let finalSyncTimer = null;
 let winnerBannerReady = false;
 let selectedHistoryDate = "";
+let selectedAdminLateDate = "";
 let state = {
   settings: {
     entryAmount: 1,
@@ -86,7 +90,9 @@ let state = {
     maxPlayers: 7,
     rules: DEFAULT_RULES,
     pointValues: DEFAULT_POINT_VALUES,
-    gameBetting: {}
+    gameBetting: {},
+    favoriteChallenges: {},
+    lateUnlocks: {}
   },
   games: seedGames(),
   bets: {}
@@ -274,11 +280,17 @@ function findPlayerName(name) {
   return state.settings.players.find((player) => player.toLowerCase() === normalized) || "";
 }
 
+function challengeInfo(pick) {
+  const match = String(pick || "").match(/^([12])H([234])$/);
+  return match ? { side: match[1], margin: Number(match[2]) } : null;
+}
+
 function pickKind(value) {
   if (RESULT_OPTIONS.includes(value)) return "result";
   if (DOUBLE_OPTIONS.includes(value)) return "double";
   if (GOAL_OPTIONS.includes(value)) return "goals";
   if (BOTH_OPTIONS.includes(value)) return "both";
+  if (challengeInfo(value)) return "challenge";
   return "";
 }
 
@@ -294,12 +306,28 @@ function pointValues() {
   return { ...DEFAULT_POINT_VALUES, ...(state.settings.pointValues || {}) };
 }
 
-function gameBettingStatus(game) {
-  return state.settings.gameBetting?.[game?.id] || "auto";
+function favoriteChallenge(game) {
+  const challenge = state.settings.favoriteChallenges?.[game?.id];
+  return challenge?.enabled && ["1", "2"].includes(challenge.side) ? challenge : null;
+}
+
+function favoriteChallengeOptions(game) {
+  const challenge = favoriteChallenge(game);
+  if (!challenge) return [];
+  return [2, 3, 4].map((margin) => `${challenge.side}H${margin}`);
+}
+
+function pickLabel(pick, game) {
+  const challenge = challengeInfo(pick);
+  if (!challenge) return pick || "-";
+  const team = challenge.side === "1" ? game?.team1 : game?.team2;
+  return `${team || `Team ${challenge.side}`} by ${challenge.margin}+`;
 }
 
 function pickPoints(pick) {
   const kind = pickKind(pick);
+  const challenge = challengeInfo(pick);
+  if (challenge) return Number(pointValues()[`challenge${challenge.margin}`]) || 0;
   return kind ? Number(pointValues()[kind]) || 0 : 0;
 }
 
@@ -511,12 +539,18 @@ async function saveBet(date, playerName, pin, picks) {
   }
   for (const [id, pick] of incomingPicks) {
     const game = gamesById.get(id);
+    if (!pickKind(pick) || (pickKind(pick) === "challenge" && !favoriteChallengeOptions(game).includes(pick))) {
+      throw new Error("One selected pick is not allowed.");
+    }
+  }
+  for (const [id, pick] of incomingPicks) {
+    const game = gamesById.get(id);
     const existingPick = existing?.picks?.[id];
-    if (isGameLocked(game) && existingPick !== pick) {
+    if (isGameLockedForPlayer(game, savedName) && existingPick !== pick) {
       throw new Error(CHEAT_WARNING);
     }
   }
-  if (!hasOpenBettableGame(date) && !incomingPicks.every(([id, pick]) => existing?.picks?.[id] === pick)) {
+  if (!hasOpenBettableGame(date, savedName) && !incomingPicks.every(([id, pick]) => existing?.picks?.[id] === pick)) {
     throw new Error(CHEAT_WARNING);
   }
   if (existing?.pinHash && existing.pinHash !== pinHash) {
@@ -532,12 +566,12 @@ async function saveBet(date, playerName, pin, picks) {
   if (existing?.picks) {
     Object.entries(existing.picks).forEach(([id, pick]) => {
       const game = gamesById.get(id);
-      if (game && isGameLocked(game)) mergedPicks[id] = pick;
+      if (game && isGameLockedForPlayer(game, savedName)) mergedPicks[id] = pick;
     });
   }
   incomingPicks.forEach(([id, pick]) => {
     const game = gamesById.get(id);
-    if (!isGameLocked(game) || existing?.picks?.[id] === pick) mergedPicks[id] = pick;
+    if (!isGameLockedForPlayer(game, savedName) || existing?.picks?.[id] === pick) mergedPicks[id] = pick;
   });
   state.bets[date] ||= {};
   state.bets[date][savedName] = { picks: mergedPicks, pinHash, updatedAt: new Date().toISOString() };
@@ -756,6 +790,39 @@ function renderAdmin() {
     .join("");
 }
 
+function renderAdminLateUnlocks() {
+  const dateSelect = $("adminLateDateSelect");
+  const gamesList = $("adminLateGamesList");
+  const unlockList = $("adminLateUnlockList");
+  if (!dateSelect || !gamesList || !unlockList) return;
+  const dates = Object.keys(DATE_COUNTS);
+  selectedAdminLateDate = selectedAdminLateDate && DATE_COUNTS[selectedAdminLateDate] ? selectedAdminLateDate : getActiveDate();
+  dateSelect.innerHTML = dates
+    .map((date) => `<option value="${date}" ${date === selectedAdminLateDate ? "selected" : ""}>${prettyDate(date)}</option>`)
+    .join("");
+  const player = $("adminLatePlayerName")?.value?.trim() || "";
+  const unlockedIds = new Set(lateUnlockGameIds(selectedAdminLateDate, player));
+  const games = state.games[selectedAdminLateDate] || [];
+  gamesList.innerHTML = games.length
+    ? games.map((game) => {
+        const started = gameStarted(game) || completedGame(game);
+        return `<label class="late-game-row ${started ? "muted-row" : ""}">
+          <input type="checkbox" data-late-game="${game.id}" ${unlockedIds.has(game.id) ? "checked" : ""} ${started ? "disabled" : ""} />
+          <span><strong>G${game.index}</strong> ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}${started ? " - started/locked" : ""}</span>
+        </label>`;
+      }).join("")
+    : `<div class="empty">No games available for this day.</div>`;
+  const rows = Object.entries(state.settings.lateUnlocks || {}).flatMap(([date, players]) =>
+    Object.entries(players || {}).map(([player, ids]) => ({ date, player, ids: ids || [] }))
+  ).filter((row) => row.ids.length);
+  unlockList.innerHTML = rows.length
+    ? rows.map((row) => `<article class="admin-unlock-row">
+        <div><strong>${escapeHtml(row.player)}</strong><div class="small">${prettyDate(row.date)} - ${row.ids.length} unlocked game${row.ids.length === 1 ? "" : "s"}</div></div>
+        <button class="danger-button" type="button" data-clear-unlock-date="${row.date}" data-clear-unlock-player="${escapeHtml(row.player)}">Clear</button>
+      </article>`).join("")
+    : `<div class="empty">No late unlocks saved.</div>`;
+}
+
 function calculate() {
   const players = realPlayers([...state.settings.players, ...betPlayerNames()]);
   const entry = Number(state.settings.entryAmount) || 0;
@@ -940,6 +1007,8 @@ function bindEvents() {
     renderBetPanel();
   });
 
+  $("playerName")?.addEventListener("input", renderBetPanel);
+
   $("gamesList").addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
@@ -960,7 +1029,7 @@ function bindEvents() {
     const playerPin = $("playerPin").value.trim();
     if (!playerName) return showToast("Please enter your name.");
     if (playerPin.length < 4) return showToast("Please enter a PIN with at least 4 characters.");
-    if (!hasOpenBettableGame(date)) return showToast(CHEAT_WARNING);
+    if (!hasOpenBettableGame(date, playerName)) return showToast(CHEAT_WARNING);
     const error = validateSelections(date);
     if (error) return showToast(error);
     try {
@@ -1031,37 +1100,54 @@ function bindEvents() {
     showToast("Settings saved.");
   });
 
-  $("adminMatchControls").addEventListener("change", async (event) => {
+  $("adminFavoriteControls").addEventListener("change", async (event) => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
     const input = event.target;
-    const gameId = input.dataset.bettingGame;
+    const gameId = input.dataset.favoriteGame;
     if (!gameId) return;
-    state.settings.gameBetting ||= {};
-    if (input.value === "auto") delete state.settings.gameBetting[gameId];
-    else state.settings.gameBetting[gameId] = input.value;
+    state.settings.favoriteChallenges ||= {};
+    if (!input.value) delete state.settings.favoriteChallenges[gameId];
+    else state.settings.favoriteChallenges[gameId] = { enabled: true, side: input.value, source: "admin" };
     await persist();
     renderAll();
-    showToast("Match betting control saved.");
+    showToast("Favorite challenge saved.");
   });
 
-  $("adminBetResetList").addEventListener("click", async (event) => {
+  $("adminLateDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminLateDate = event.target.value;
+    renderAdminLateUnlocks();
+  });
+
+  $("adminLatePlayerName")?.addEventListener("input", renderAdminLateUnlocks);
+
+  $("saveLateUnlockButton")?.addEventListener("click", async () => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
-    const button = event.target.closest("button[data-reset-date]");
-    if (!button) return;
-    const date = button.dataset.resetDate;
-    const player = button.dataset.resetPlayer;
-    if (!date || !player || !state.bets[date]?.[player]) return;
-    delete state.bets[date][player];
-    if (!Object.keys(state.bets[date]).length) delete state.bets[date];
-    if (db) {
-      await db.from("bets").delete().eq("match_date", date).eq("player_name", player);
-      await db.from("settings").upsert({ id: "main", data: state.settings, updated_at: new Date().toISOString() });
-    } else {
-      saveLocal();
-    }
-    selections = {};
+    const date = selectedAdminLateDate || $("adminLateDateSelect")?.value;
+    const player = $("adminLatePlayerName")?.value?.trim();
+    if (!date || !player) return showToast("Choose a match day and enter player name.");
+    const ids = [...document.querySelectorAll("[data-late-game]:checked")].map((input) => input.dataset.lateGame);
+    state.settings.lateUnlocks ||= {};
+    state.settings.lateUnlocks[date] ||= {};
+    if (ids.length) state.settings.lateUnlocks[date][player] = ids;
+    else delete state.settings.lateUnlocks[date][player];
+    if (!Object.keys(state.settings.lateUnlocks[date]).length) delete state.settings.lateUnlocks[date];
+    await persist();
     renderAll();
-    showToast(`${player}'s bet was reset for ${prettyDate(date)}.`);
+    showToast(ids.length ? `Late unlock saved for ${player}.` : `Late unlock cleared for ${player}.`);
+  });
+
+  $("adminLateUnlockList")?.addEventListener("click", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const button = event.target.closest("button[data-clear-unlock-date]");
+    if (!button) return;
+    const date = button.dataset.clearUnlockDate;
+    const player = button.dataset.clearUnlockPlayer;
+    if (!state.settings.lateUnlocks?.[date]?.[player]) return;
+    delete state.settings.lateUnlocks[date][player];
+    if (!Object.keys(state.settings.lateUnlocks[date]).length) delete state.settings.lateUnlocks[date];
+    await persist();
+    renderAll();
+    showToast(`Late unlock cleared for ${player}.`);
   });
 
   $("adminResults").addEventListener("change", async (event) => {
@@ -1110,19 +1196,37 @@ function completedGame(game) {
   return game.completed && game.score1 !== null && game.score2 !== null;
 }
 
+function gameStarted(game) {
+  return Boolean(game?.time) && Date.now() >= new Date(game.time).getTime();
+}
+
+function lateUnlockGameIds(date, playerName) {
+  const player = String(playerName || "").trim().toLowerCase();
+  if (!player) return [];
+  const dayUnlocks = state.settings.lateUnlocks?.[date] || {};
+  const key = Object.keys(dayUnlocks).find((name) => name.toLowerCase() === player);
+  return key ? dayUnlocks[key] || [] : [];
+}
+
+function hasLateUnlock(game, playerName) {
+  return lateUnlockGameIds(game?.date, playerName).includes(game?.id);
+}
+
 function isGameLocked(game) {
-  const status = gameBettingStatus(game);
-  if (status === "closed") return true;
   if (!game?.time) return false;
-  if (status === "open") return Date.now() >= new Date(game.time).getTime();
   if (SPECIAL_GAME_LOCK_OVERRIDES.has(String(game.id))) {
-    return Date.now() >= new Date(game.time).getTime();
+    return gameStarted(game);
   }
   return isLocked(game.date);
 }
 
-function hasOpenBettableGame(date) {
-  return (state.games[date] || []).some((game) => !isGameLocked(game));
+function isGameLockedForPlayer(game, playerName) {
+  if (hasLateUnlock(game, playerName) && !gameStarted(game) && !completedGame(game)) return false;
+  return isGameLocked(game);
+}
+
+function hasOpenBettableGame(date, playerName = "") {
+  return (state.games[date] || []).some((game) => !isGameLockedForPlayer(game, playerName));
 }
 
 function matchDayComplete(date) {
@@ -1171,6 +1275,7 @@ function renderBetPanel() {
   const games = state.games[date] || [];
   const values = pointValues();
   const selectedCount = selectedPickCount();
+  const playerName = $("playerName")?.value?.trim() || "";
   const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
   $("activeDateTitle").textContent = `${prettyDate(date)}${countedDate(date) ? "" : " - test only"}`;
   $("dayRuleStrip").innerHTML = [
@@ -1179,37 +1284,44 @@ function renderBetPanel() {
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
+    `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3}/${values.challenge4} pts</span>`,
     `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
   $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
   $("currentResults").innerHTML = renderMiniResults(date);
-  $("gamesList").innerHTML = games.map(renderGameCard).join("");
+  $("gamesList").innerHTML = games.map((game) => renderGameCard(game, playerName)).join("");
   $("nextMatchdayPreview").innerHTML = renderNextMatchdayPreview(date);
 
-  const locked = !hasOpenBettableGame(date);
+  const locked = !hasOpenBettableGame(date, playerName);
   $("saveBetButton").disabled = locked;
   $("saveBetButton").querySelector("span").textContent = locked ? "Bets locked" : "Save my bet";
 }
 
-function renderGameCard(game) {
+function renderGameCard(game, playerName = "") {
   const selected = selections[game.id] || "";
   const kind = pickKind(selected);
-  const locked = isGameLocked(game);
-  const typeButtons = ["result", "goals", "both", "double"]
+  const locked = isGameLockedForPlayer(game, playerName);
+  const challenge = favoriteChallenge(game);
+  const typeKeys = challenge ? ["result", "goals", "both", "double", "challenge"] : ["result", "goals", "both", "double"];
+  const typeButtons = typeKeys
     .map((key) => {
-      const label = key === "both" ? "GG/NG" : key;
+      const label = key === "both" ? "GG/NG" : key === "challenge" ? "Favorite+" : key;
       return `<button class="pick-button ${key === kind ? "selected" : ""}" type="button" data-type="${key}" data-game="${game.id}" ${locked ? "disabled" : ""}>${label}</button>`;
     })
     .join("");
   const optionButtons = kind
-    ? allowedOptions(kind)
-        .map((option) => `<button class="pick-button ${option === selected ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${option}</button>`)
+    ? (kind === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(kind))
+        .map((option) => `<button class="pick-button ${option === selected ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`)
         .join("")
     : `<span class="small">Choose pick type first</span>`;
   const clearButton = selected && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
+  const challengeBadge = challenge
+    ? `<div class="challenge-badge">Favorite Challenge: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} has extra margin picks</div>`
+    : "";
   return `<article class="game-card">
     <div class="game-meta"><span>Game ${game.index}${locked ? " · locked" : ""}</span><span>${game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"}</span></div>
+    ${challengeBadge}
     <div class="teams">
       <div class="team-row"><strong>${escapeHtml(game.team1)}</strong><span>1</span></div>
       <div class="team-row"><strong>${escapeHtml(game.team2)}</strong><span>2</span></div>
@@ -1264,6 +1376,9 @@ function renderAdmin() {
     ["goals", "Goals O2/U2"],
     ["both", "GG/NG"],
     ["double", "Double 1X/X2/12"],
+    ["challenge2", "Favorite wins by 2+"],
+    ["challenge3", "Favorite wins by 3+"],
+    ["challenge4", "Favorite wins by 4+"],
     ["soloGameBonus", "Solo correct game bonus"],
     ["perfectDayBonus", "All selected correct bonus"]
   ].map(([key, label]) => `<label class="field point-field">
@@ -1271,21 +1386,21 @@ function renderAdmin() {
       <input data-point-kind="${key}" type="number" min="0" step="1" value="${values[key]}" />
     </label>`)
     .join("");
-  $("adminMatchControls").innerHTML = Object.keys(DATE_COUNTS)
+  $("adminFavoriteControls").innerHTML = Object.keys(DATE_COUNTS)
     .map((date) => {
       const rows = (state.games[date] || [])
         .map((game) => {
-          const status = gameBettingStatus(game);
+          const challenge = favoriteChallenge(game);
           const result = completedGame(game) ? `Final ${game.score1}-${game.score2}` : (isGameLocked(game) ? "Locked" : "Open");
           return `<div class="admin-match-row">
             <div>
               <strong>${prettyDate(date)} &middot; G${game.index}</strong>
               <div class="small">${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)} &middot; ${result}</div>
             </div>
-            <select data-betting-game="${game.id}" aria-label="Betting status for ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}">
-              <option value="auto" ${status === "auto" ? "selected" : ""}>Auto</option>
-              <option value="open" ${status === "open" ? "selected" : ""}>Open</option>
-              <option value="closed" ${status === "closed" ? "selected" : ""}>Closed</option>
+            <select data-favorite-game="${game.id}" aria-label="Favorite challenge for ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}">
+              <option value="">No challenge</option>
+              <option value="1" ${challenge?.side === "1" ? "selected" : ""}>${escapeHtml(game.team1)} favorite</option>
+              <option value="2" ${challenge?.side === "2" ? "selected" : ""}>${escapeHtml(game.team2)} favorite</option>
             </select>
           </div>`;
         })
@@ -1293,19 +1408,7 @@ function renderAdmin() {
       return rows ? `<article class="game-card"><div class="game-meta"><strong>${prettyDate(date)}</strong><span>${rows ? "" : "No games"}</span></div>${rows}</article>` : "";
     })
     .join("") || `<div class="empty">No games available yet.</div>`;
-  $("adminBetResetList").innerHTML = Object.keys(DATE_COUNTS)
-    .map((date) => {
-      const players = Object.keys(state.bets[date] || {}).sort((a, b) => a.localeCompare(b));
-      if (!players.length) return "";
-      return `<article class="game-card">
-        <div class="game-meta"><strong>${prettyDate(date)}</strong><span>${players.length} saved</span></div>
-        ${players.map((player) => `<div class="admin-reset-row">
-          <div><strong>${escapeHtml(player)}</strong><div class="small">${selectedPickCount(getBetPicks(state.bets[date][player]))} pick${selectedPickCount(getBetPicks(state.bets[date][player])) === 1 ? "" : "s"} saved</div></div>
-          <button class="danger-button" type="button" data-reset-date="${date}" data-reset-player="${escapeHtml(player)}">Reset bet</button>
-        </div>`).join("")}
-      </article>`;
-    })
-    .join("") || `<div class="empty">No saved bets to reset.</div>`;
+  renderAdminLateUnlocks();
   $("adminResults").innerHTML = Object.keys(DATE_COUNTS)
     .map((date) => {
       const rows = (state.games[date] || [])
@@ -1511,6 +1614,11 @@ function pickWins(pick, game) {
   if (!pick || !completedGame(game)) return false;
   const result = game.score1 > game.score2 ? "1" : game.score1 < game.score2 ? "2" : "X";
   const total = game.score1 + game.score2;
+  const challenge = challengeInfo(pick);
+  if (challenge) {
+    const margin = challenge.side === "1" ? game.score1 - game.score2 : game.score2 - game.score1;
+    return margin >= challenge.margin;
+  }
   if (RESULT_OPTIONS.includes(pick)) return pick === result;
   if (pick === "1X") return result === "1" || result === "X";
   if (pick === "X2") return result === "X" || result === "2";
@@ -1610,7 +1718,7 @@ function renderHistory() {
               return `<div class="pick-line">
               <span>G${game.index}</span>
               <strong>${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
-              <span>${escapeHtml(pick || "-")}</span>
+              <span>${escapeHtml(pickLabel(pick, game))}</span>
               ${marker}
             </div>`;
             })
@@ -1657,7 +1765,10 @@ function validateSelections(date) {
   if (picks.length > games.length) return `This day has only ${games.length} games.`;
   const badPick = picks.find(([, pick]) => !pickKind(pick));
   if (badPick) return "One of the selected picks is not allowed.";
-  const lockedPick = picks.find(([id]) => isGameLocked(games.find((game) => game.id === id)));
+  const badChallenge = picks.find(([id, pick]) => pickKind(pick) === "challenge" && !favoriteChallengeOptions(games.find((game) => game.id === id)).includes(pick));
+  if (badChallenge) return "One favorite challenge pick is not available for that game.";
+  const playerName = $("playerName")?.value?.trim() || "";
+  const lockedPick = picks.find(([id]) => isGameLockedForPlayer(games.find((game) => game.id === id), playerName));
   if (lockedPick) return "One selected game is locked. Only open games can be saved.";
   return "";
 }
@@ -1674,6 +1785,8 @@ function bindEvents() {
     renderBetPanel();
   });
 
+  $("playerName")?.addEventListener("input", renderBetPanel);
+
   $("gamesList").addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
@@ -1681,7 +1794,8 @@ function bindEvents() {
     if (button.dataset.clear) {
       delete selections[gameId];
     } else if (button.dataset.type) {
-      selections[gameId] = allowedOptions(button.dataset.type)[0];
+      const game = (state.games[getActiveDate()] || []).find((item) => item.id === gameId);
+      selections[gameId] = (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
     } else if (button.dataset.pick) {
       selections[gameId] = button.dataset.pick;
     }
@@ -1695,7 +1809,7 @@ function bindEvents() {
     const playerPin = $("playerPin").value.trim();
     if (!playerName) return showToast("Please enter your name.");
     if (playerPin.length < 4) return showToast("Please enter a PIN with at least 4 characters.");
-    if (!hasOpenBettableGame(date)) return showToast(CHEAT_WARNING);
+    if (!hasOpenBettableGame(date, playerName)) return showToast(CHEAT_WARNING);
     const error = validateSelections(date);
     if (error) return showToast(error);
     const validIds = new Set((state.games[date] || []).map((game) => game.id));
@@ -1770,37 +1884,54 @@ function bindEvents() {
     showToast("Settings saved.");
   });
 
-  $("adminMatchControls").addEventListener("change", async (event) => {
+  $("adminFavoriteControls").addEventListener("change", async (event) => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
     const input = event.target;
-    const gameId = input.dataset.bettingGame;
+    const gameId = input.dataset.favoriteGame;
     if (!gameId) return;
-    state.settings.gameBetting ||= {};
-    if (input.value === "auto") delete state.settings.gameBetting[gameId];
-    else state.settings.gameBetting[gameId] = input.value;
+    state.settings.favoriteChallenges ||= {};
+    if (!input.value) delete state.settings.favoriteChallenges[gameId];
+    else state.settings.favoriteChallenges[gameId] = { enabled: true, side: input.value, source: "admin" };
     await persist();
     renderAll();
-    showToast("Match betting control saved.");
+    showToast("Favorite challenge saved.");
   });
 
-  $("adminBetResetList").addEventListener("click", async (event) => {
+  $("adminLateDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminLateDate = event.target.value;
+    renderAdminLateUnlocks();
+  });
+
+  $("adminLatePlayerName")?.addEventListener("input", renderAdminLateUnlocks);
+
+  $("saveLateUnlockButton")?.addEventListener("click", async () => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
-    const button = event.target.closest("button[data-reset-date]");
-    if (!button) return;
-    const date = button.dataset.resetDate;
-    const player = button.dataset.resetPlayer;
-    if (!date || !player || !state.bets[date]?.[player]) return;
-    delete state.bets[date][player];
-    if (!Object.keys(state.bets[date]).length) delete state.bets[date];
-    if (db) {
-      await db.from("bets").delete().eq("match_date", date).eq("player_name", player);
-      await db.from("settings").upsert({ id: "main", data: state.settings, updated_at: new Date().toISOString() });
-    } else {
-      saveLocal();
-    }
-    selections = {};
+    const date = selectedAdminLateDate || $("adminLateDateSelect")?.value;
+    const player = $("adminLatePlayerName")?.value?.trim();
+    if (!date || !player) return showToast("Choose a match day and enter player name.");
+    const ids = [...document.querySelectorAll("[data-late-game]:checked")].map((input) => input.dataset.lateGame);
+    state.settings.lateUnlocks ||= {};
+    state.settings.lateUnlocks[date] ||= {};
+    if (ids.length) state.settings.lateUnlocks[date][player] = ids;
+    else delete state.settings.lateUnlocks[date][player];
+    if (!Object.keys(state.settings.lateUnlocks[date]).length) delete state.settings.lateUnlocks[date];
+    await persist();
     renderAll();
-    showToast(`${player}'s bet was reset for ${prettyDate(date)}.`);
+    showToast(ids.length ? `Late unlock saved for ${player}.` : `Late unlock cleared for ${player}.`);
+  });
+
+  $("adminLateUnlockList")?.addEventListener("click", async (event) => {
+    if (!adminUnlocked) return showToast("Unlock admin first.");
+    const button = event.target.closest("button[data-clear-unlock-date]");
+    if (!button) return;
+    const date = button.dataset.clearUnlockDate;
+    const player = button.dataset.clearUnlockPlayer;
+    if (!state.settings.lateUnlocks?.[date]?.[player]) return;
+    delete state.settings.lateUnlocks[date][player];
+    if (!Object.keys(state.settings.lateUnlocks[date]).length) delete state.settings.lateUnlocks[date];
+    await persist();
+    renderAll();
+    showToast(`Late unlock cleared for ${player}.`);
   });
 
   $("adminResults").addEventListener("change", async (event) => {

@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260617-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260617-2" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./config.js?v=20260617-1"></script>
+    <script src="./config.js?v=20260617-2"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -175,15 +175,30 @@
             </button>
 
             <details class="admin-details" open>
-              <summary>Match Betting Control</summary>
-              <div class="small">Auto follows the normal lock rule. Open lets users bet that match until its own kickoff. Closed blocks that match.</div>
-              <div class="admin-match-controls" id="adminMatchControls"></div>
+              <summary>Favorite Challenges</summary>
+              <div class="small">Use this for heavy favorites. Players will see extra high-point options on the Bet page.</div>
+              <div class="admin-match-controls" id="adminFavoriteControls"></div>
             </details>
 
             <details class="admin-details">
-              <summary>Reset Saved Bets</summary>
-              <div class="small">Use this when a player needs to start over for one match day.</div>
-              <div class="admin-bet-reset-list" id="adminBetResetList"></div>
+              <summary>Late Bet Unlocks</summary>
+              <div class="small">Unlock only games that have not started yet for one player. Started games stay locked.</div>
+              <div class="admin-late-unlock">
+                <label class="field">
+                  <span>Match day</span>
+                  <select id="adminLateDateSelect"></select>
+                </label>
+                <label class="field">
+                  <span>Player name</span>
+                  <input id="adminLatePlayerName" placeholder="Exact player name" />
+                </label>
+                <div id="adminLateGamesList" class="admin-late-games"></div>
+                <button class="secondary-button" id="saveLateUnlockButton" type="button">
+                  <i data-lucide="unlock"></i>
+                  <span>Save unlock</span>
+                </button>
+              </div>
+              <div id="adminLateUnlockList" class="admin-bet-reset-list"></div>
             </details>
 
             <details class="admin-details">
@@ -216,6 +231,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260617-1"></script>
+    <script src="./app.js?v=20260617-2"></script>
   </body>
 </html>
