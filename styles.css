@@ -522,6 +522,18 @@ textarea {
   font-weight: 900;
 }
 
+.history-pager {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.history-page-button {
+  width: auto;
+  min-width: 96px;
+}
+
 .games-list,
 .admin-results,
 .standings-list,
@@ -953,6 +965,20 @@ textarea {
 
   .daily-winner-banner {
     width: 100%;
+  }
+
+  .history-pager {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .history-pager select {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+
+  .history-page-button {
+    width: 100%;
+    min-width: 0;
   }
 
   .pot-summary {

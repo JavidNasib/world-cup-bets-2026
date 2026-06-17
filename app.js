@@ -78,6 +78,7 @@ let db = null;
 let adminUnlocked = false;
 let finalSyncTimer = null;
 let winnerBannerReady = false;
+let selectedHistoryDate = "";
 let state = {
   settings: {
     entryAmount: 1,
@@ -1453,6 +1454,59 @@ function renderDailyWinnerBanner() {
     `;
 }
 
+function historyDatesWithBets() {
+  return Object.keys(DATE_COUNTS).filter((date) => Object.keys(state.bets[date] || {}).length);
+}
+
+function latestHistoryDate() {
+  const dates = historyDatesWithBets();
+  return dates.at(-1) || todayKey();
+}
+
+function ensureSelectedHistoryDate() {
+  if (selectedHistoryDate && DATE_COUNTS[selectedHistoryDate]) return selectedHistoryDate;
+  selectedHistoryDate = latestHistoryDate();
+  return selectedHistoryDate;
+}
+
+function moveHistoryPage(direction) {
+  const dates = historyDatesWithBets();
+  if (!dates.length) return;
+  const current = ensureSelectedHistoryDate();
+  const currentIndex = Math.max(0, dates.indexOf(current));
+  const nextIndex = Math.min(dates.length - 1, Math.max(0, currentIndex + direction));
+  selectedHistoryDate = dates[nextIndex];
+  renderHistory();
+}
+
+function renderHistoryPager() {
+  const select = $("historyDateSelect");
+  const prev = $("historyPrevButton");
+  const next = $("historyNextButton");
+  if (!select || !prev || !next) return;
+  const dates = historyDatesWithBets();
+  if (!dates.length) {
+    select.innerHTML = `<option>No saved bets yet</option>`;
+    select.disabled = true;
+    prev.disabled = true;
+    next.disabled = true;
+    return;
+  }
+  const selected = ensureSelectedHistoryDate();
+  select.disabled = false;
+  select.innerHTML = dates
+    .map((date) => {
+      const betCount = Object.keys(state.bets[date] || {}).length;
+      return `<option value="${date}">${prettyDate(date)}${countedDate(date) ? "" : " (test)"} - ${betCount} bet${betCount === 1 ? "" : "s"}</option>`;
+    })
+    .join("");
+  select.value = dates.includes(selected) ? selected : latestHistoryDate();
+  selectedHistoryDate = select.value;
+  const index = dates.indexOf(selectedHistoryDate);
+  prev.disabled = index <= 0;
+  next.disabled = index < 0 || index >= dates.length - 1;
+}
+
 function pickWins(pick, game) {
   if (!pick || !completedGame(game)) return false;
   const result = game.score1 > game.score2 ? "1" : game.score1 < game.score2 ? "2" : "X";
@@ -1529,11 +1583,13 @@ function renderTables() {
 }
 
 function renderHistory() {
-  $("historyList").innerHTML = Object.keys(DATE_COUNTS)
+  renderHistoryPager();
+  const date = ensureSelectedHistoryDate();
+  $("historyList").innerHTML = [date]
     .map((date) => {
       const bets = state.bets[date] || {};
       const players = Object.keys(bets);
-      if (!players.length) return "";
+      if (!players.length) return `<div class="empty">No saved bets for ${prettyDate(date)} yet.</div>`;
       const games = state.games[date] || [];
       const complete = games.length > 0 && games.every(completedGame);
       const playerRows = players
@@ -1649,6 +1705,7 @@ function bindEvents() {
     } catch (error) {
       return showToast(error.message);
     }
+    selectedHistoryDate = date;
     clearBetForm();
     await syncFixtures(true);
     renderAll();
@@ -1677,6 +1734,14 @@ function bindEvents() {
     renderBetPanel();
     showToast("Login successful. Your saved picks are loaded.");
   });
+
+  $("historyDateSelect")?.addEventListener("change", (event) => {
+    selectedHistoryDate = event.target.value;
+    renderHistory();
+  });
+
+  $("historyPrevButton")?.addEventListener("click", () => moveHistoryPage(-1));
+  $("historyNextButton")?.addEventListener("click", () => moveHistoryPage(1));
 
   $("unlockAdminButton").addEventListener("click", async () => {
     const pin = $("adminPin").value.trim();
