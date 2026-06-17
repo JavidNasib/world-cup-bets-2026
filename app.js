@@ -279,6 +279,37 @@ function findPlayerName(name) {
   return state.settings.players.find((player) => player.toLowerCase() === normalized) || "";
 }
 
+function compareName(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function editDistance(a, b) {
+  const left = compareName(a);
+  const right = compareName(b);
+  if (!left || !right) return Math.max(left.length, right.length);
+  const rows = Array.from({ length: left.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= right.length; j += 1) rows[0][j] = j;
+  for (let i = 1; i <= left.length; i += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
+      rows[i][j] = left[i - 1] === right[j - 1]
+        ? rows[i - 1][j - 1]
+        : Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + 1);
+    }
+  }
+  return rows[left.length][right.length];
+}
+
+function closePlayerName(name) {
+  if (findPlayerName(name)) return "";
+  const cleaned = compareName(name);
+  if (cleaned.length < 4) return "";
+  return state.settings.players.find((player) => {
+    const distance = editDistance(name, player);
+    const threshold = Math.min(2, Math.max(1, Math.floor(Math.max(cleaned.length, compareName(player).length) / 5)));
+    return distance > 0 && distance <= threshold;
+  }) || "";
+}
+
 function challengeInfo(pick) {
   const match = String(pick || "").match(/^([12])H([234])$/);
   return match ? { side: match[1], margin: Number(match[2]) } : null;
@@ -556,6 +587,10 @@ async function saveBet(date, playerName, pin, picks) {
     throw new Error("This name already has a bet. Use the same PIN to edit it.");
   }
   if (!state.settings.players.includes(savedName)) {
+    const closeName = closePlayerName(savedName);
+    if (closeName) {
+      throw new Error(`Name looks like ${closeName}. Please choose it from the name list or ask admin if this is a new player.`);
+    }
     if (state.settings.players.length >= maxPlayers()) {
       throw new Error(`Maximum ${maxPlayers()} players are allowed.`);
     }
@@ -1013,7 +1048,8 @@ function bindEvents() {
     if (!button) return;
     const gameId = button.dataset.game;
     if (button.dataset.type) {
-      selections[gameId] = allowedOptions(button.dataset.type)[0];
+      const game = (state.games[getActiveDate()] || []).find((item) => item.id === gameId);
+      selections[gameId] = (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
     }
     if (button.dataset.pick) {
       selections[gameId] = button.dataset.pick;
@@ -1275,6 +1311,10 @@ function renderBetPanel() {
   const values = pointValues();
   const selectedCount = selectedPickCount();
   const playerName = $("playerName")?.value?.trim() || "";
+  const nameOptions = $("playerNameOptions");
+  if (nameOptions) {
+    nameOptions.innerHTML = state.settings.players.map((player) => `<option value="${escapeHtml(player)}"></option>`).join("");
+  }
   const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
   $("activeDateTitle").textContent = `${prettyDate(date)}${countedDate(date) ? "" : " - test only"}`;
   $("dayRuleStrip").innerHTML = [
@@ -1767,7 +1807,9 @@ function validateSelections(date) {
   const badChallenge = picks.find(([id, pick]) => pickKind(pick) === "challenge" && !favoriteChallengeOptions(games.find((game) => game.id === id)).includes(pick));
   if (badChallenge) return "One favorite challenge pick is not available for that game.";
   const playerName = $("playerName")?.value?.trim() || "";
-  const lockedPick = picks.find(([id]) => isGameLockedForPlayer(games.find((game) => game.id === id), playerName));
+  const savedName = findPlayerName(playerName) || playerName;
+  const existingPicks = getBetPicks(state.bets[date]?.[savedName]) || {};
+  const lockedPick = picks.find(([id, pick]) => isGameLockedForPlayer(games.find((game) => game.id === id), savedName) && existingPicks[id] !== pick);
   if (lockedPick) return "One selected game is locked. Only open games can be saved.";
   return "";
 }

@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260617-3" />
+    <link rel="stylesheet" href="./styles.css?v=20260617-4" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./config.js?v=20260617-3"></script>
+    <script src="./config.js?v=20260617-4"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -60,7 +60,8 @@
           <form id="betForm" class="bet-form">
             <label class="field">
               <span>Your name</span>
-              <input id="playerName" autocomplete="name" placeholder="Enter name" required />
+              <input id="playerName" autocomplete="name" list="playerNameOptions" placeholder="Enter name" required />
+              <datalist id="playerNameOptions"></datalist>
             </label>
             <label class="field">
               <span>Your PIN for edits</span>
@@ -233,6 +234,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260617-3"></script>
+    <script src="./app.js?v=20260617-4"></script>
   </body>
 </html>
