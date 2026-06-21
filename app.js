@@ -182,23 +182,14 @@ function isPlaceholderGame(game) {
 }
 
 function cleanGamesForDate(date, games = []) {
-  const bestByIndex = new Map();
-  games.forEach((game) => {
-    const key = Number(game.index) || String(game.id);
-    const current = bestByIndex.get(key);
-    const quality = (completedGame(game) ? 100 : 0)
-      + (/^\d+$/.test(String(game.id)) ? 20 : 0)
-      + (game.score1 !== null && game.score2 !== null ? 10 : 0)
-      + (!isPlaceholderGame(game) ? 1 : 0);
-    if (!current || quality > current.quality) bestByIndex.set(key, { game, quality });
-  });
-  return [...bestByIndex.values()]
-    .map(({ game }) => game)
+  const realGames = games.filter((game) => !isPlaceholderGame(game));
+  const usableGames = realGames.length ? realGames : games;
+  return usableGames
     .sort((a, b) => {
       const timeCompare = String(a.time || "").localeCompare(String(b.time || ""));
       return timeCompare || (a.index - b.index);
     })
-    .slice(0, DATE_COUNTS[date] || bestByIndex.size)
+    .slice(0, DATE_COUNTS[date] || usableGames.length)
     .map((game, index) => ({ ...game, index: index + 1 }));
 }
 
@@ -211,11 +202,6 @@ function signedMoney(value) {
   if (amount > 0) return `+${money(amount)}`;
   if (amount < 0) return `-${money(Math.abs(amount))}`;
   return money(0);
-}
-
-function ordinalSuffix(value) {
-  if (value % 100 >= 11 && value % 100 <= 13) return "th";
-  return value % 10 === 1 ? "st" : value % 10 === 2 ? "nd" : value % 10 === 3 ? "rd" : "th";
 }
 
 function prettyDate(date) {
@@ -1687,20 +1673,6 @@ function renderTables() {
   const calc = calculate();
   const rows = Object.entries(calc.totals).sort((a, b) => b[1].points - a[1].points || b[1].balance - a[1].balance);
   const distributed = rows.reduce((sum, [, total]) => sum + total.winnings, 0);
-  const payoutGroups = Object.values(calc.payoutWinners.reduce((groups, winner) => {
-    groups[winner.place] ||= [];
-    groups[winner.place].push(winner);
-    return groups;
-  }, {}));
-  const tieSummary = payoutGroups
-    .filter((group) => group.length > 1)
-    .map((group) => {
-      const firstPlace = group[0].place;
-      const lastPlace = firstPlace + group.length - 1;
-      const places = firstPlace === lastPlace ? `${firstPlace}${ordinalSuffix(firstPlace)}` : `${firstPlace}${ordinalSuffix(firstPlace)} + ${lastPlace}${ordinalSuffix(lastPlace)}`;
-      return `<div class="tie-summary"><strong>Current tie:</strong> ${group.map((winner) => escapeHtml(winner.player)).join(" and ")} split the ${places} prize money. Each payout is ${money(group[0].payout)} before entry fees.</div>`;
-    })
-    .join("");
   $("standingsList").innerHTML = rows.length
     ? `<div class="pot-summary">
         <div><span>Total pot</span><strong>${money(calc.totalPot)}</strong></div>
@@ -1711,7 +1683,6 @@ function renderTables() {
         <div><span>Distributed to winners</span><strong>${money(distributed)}</strong></div>
       </div>
       <div class="table-note">Money goes to the top 3 point places: 1st gets 50% of the pot, 2nd gets 30%, and 3rd gets 20%. Ties split the prize for the tied places. Net = payout - entry paid.</div>
-      ${tieSummary}
       <div class="standings-table">
         <div class="standings-row standings-head">
           <span>Player</span>
@@ -1720,17 +1691,13 @@ function renderTables() {
           <span>Payout</span>
           <span>Net</span>
         </div>
-        ${rows.map(([player, total]) => {
-          const place = rows.findIndex(([, row]) => row.points === total.points) + 1;
-          const tied = rows.filter(([, row]) => row.points === total.points).length > 1;
-          return `<div class="standings-row">
-          <span><strong>${tied ? "T-" : ""}${place}. ${escapeHtml(player)}</strong></span>
+        ${rows.map(([player, total], index) => `<div class="standings-row">
+          <span><strong>${index + 1}. ${escapeHtml(player)}</strong></span>
           <span class="points-value">${total.points}</span>
           <span>${money(total.entries)}</span>
           <span>${money(total.winnings)}</span>
           <span class="money ${total.balance >= 0 ? "positive" : "negative"}">${signedMoney(total.balance)}</span>
-        </div>`;
-        }).join("")}
+        </div>`).join("")}
       </div>`
     : `<div class="empty">Add players by saving bets.</div>`;
 
