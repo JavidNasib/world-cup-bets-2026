@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260620-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260617-4" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./config.js?v=20260620-1"></script>
+    <script src="./config.js?v=20260617-4"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -176,7 +176,7 @@
             </button>
 
             <details class="admin-details" open>
-              <summary>Favorite Handicaps</summary>
+              <summary>Favorite Challenges</summary>
               <div class="small">Use this for heavy favorites. Players will see extra high-point options on the Bet page.</div>
               <div class="admin-match-controls" id="adminFavoriteControls"></div>
             </details>
@@ -219,11 +219,11 @@
               <article><strong>Goals</strong><span>O2 or U2 gives 3 points when correct.</span></article>
               <article><strong>Both teams</strong><span>GG or NG gives 2 points when correct.</span></article>
               <article><strong>Double</strong><span>1X, X2, or 12 gives 1 point when correct.</span></article>
-              <article><strong>Favorite Handicap</strong><span>Favorite -2 gives 6 points. Favorite -3 gives 8 points.</span></article>
+              <article><strong>Favorite Challenge</strong><span>Favorite wins by 2+ gives 6 points, by 3+ gives 8 points.</span></article>
             </div>
             <p><strong>Result:</strong> 1 = Team 1 wins, X = tie, 2 = Team 2 wins.</p>
             <p><strong>Double:</strong> 1X, X2, or 12. <strong>Goals:</strong> O2 is more than 2 total goals, U2 is 2 or fewer total goals. <strong>GG:</strong> both teams score. <strong>NG:</strong> one or both teams do not score.</p>
-            <p><strong>Favorite Handicap:</strong> the opponent starts with extra goals. If Brazil -2 is selected, the bet starts Brazil 0-2 opponent, so Brazil must win by more than 2 goals. A real 3-0 result becomes 3-2 and wins. If Brazil -3 is selected, a real 3-0 becomes 3-3 and loses because a draw does not win the handicap bet.</p>
+            <p><strong>Favorite Challenge:</strong> some games may show extra options when one team is a strong favorite. If you choose “favorite by 2+”, that team must win by at least 2 goals. If you choose “favorite by 3+”, that team must win by at least 3 goals.</p>
             <p><strong>Solo correct bonus:</strong> if only one player gets a specific game correct, that player gets the regular points for that pick plus 2 extra points.</p>
             <p><strong>Perfect day bonus:</strong> if a match day has more than one game and every bet a player selected is correct, that player gets 4 extra points.</p>
             <p><strong>Ties:</strong> tied players split the prize for the tied places. If two players tie for 1st, they split the 1st and 2nd place money together.</p>
@@ -234,6 +234,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260620-1"></script>
+    <script src="./app.js?v=20260617-4"></script>
   </body>
 </html>
