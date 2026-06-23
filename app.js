@@ -311,7 +311,7 @@ function closePlayerName(name) {
 }
 
 function challengeInfo(pick) {
-  const match = String(pick || "").match(/^([12])H([23])$/);
+  const match = String(pick || "").match(/^([12])H([234])$/);
   return match ? { side: match[1], margin: Number(match[2]) } : null;
 }
 
@@ -351,7 +351,7 @@ function pickLabel(pick, game) {
   const challenge = challengeInfo(pick);
   if (!challenge) return pick || "-";
   const team = challenge.side === "1" ? game?.team1 : game?.team2;
-  return `${team || `Team ${challenge.side}`} -${challenge.margin} (opponent starts +${challenge.margin})`;
+  return `${team || `Team ${challenge.side}`} by ${challenge.margin}+`;
 }
 
 function pickPoints(pick) {
@@ -1323,7 +1323,7 @@ function renderBetPanel() {
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
-    `<span class="rule-pill">Favorite handicap -2: ${values.challenge2} pts / -3: ${values.challenge3} pts</span>`,
+    `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3} pts</span>`,
     `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
@@ -1345,7 +1345,7 @@ function renderGameCard(game, playerName = "") {
   const typeKeys = challenge ? ["result", "goals", "both", "double", "challenge"] : ["result", "goals", "both", "double"];
   const typeButtons = typeKeys
     .map((key) => {
-      const label = key === "both" ? "GG/NG" : key === "challenge" ? "Handicap" : key;
+      const label = key === "both" ? "GG/NG" : key === "challenge" ? "Favorite+" : key;
       return `<button class="pick-button ${key === kind ? "selected" : ""}" type="button" data-type="${key}" data-game="${game.id}" ${locked ? "disabled" : ""}>${label}</button>`;
     })
     .join("");
@@ -1356,7 +1356,7 @@ function renderGameCard(game, playerName = "") {
     : `<span class="small">Choose pick type first</span>`;
   const clearButton = selected && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
   const challengeBadge = challenge
-    ? `<div class="challenge-badge">Favorite Handicap: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} can be picked at -2 or -3</div>`
+    ? `<div class="challenge-badge">Favorite Challenge: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} has extra margin picks</div>`
     : "";
   return `<article class="game-card">
     <div class="game-meta"><span>Game ${game.index}${locked ? " · locked" : ""}</span><span>${game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"}</span></div>
@@ -1415,8 +1415,8 @@ function renderAdmin() {
     ["goals", "Goals O2/U2"],
     ["both", "GG/NG"],
     ["double", "Double 1X/X2/12"],
-    ["challenge2", "Favorite -2 handicap"],
-    ["challenge3", "Favorite -3 handicap"],
+    ["challenge2", "Favorite wins by 2+"],
+    ["challenge3", "Favorite wins by 3+"],
     ["soloGameBonus", "Solo correct game bonus"],
     ["perfectDayBonus", "All selected correct bonus"]
   ].map(([key, label]) => `<label class="field point-field">
@@ -1656,7 +1656,7 @@ function pickWins(pick, game) {
   const challenge = challengeInfo(pick);
   if (challenge) {
     const margin = challenge.side === "1" ? game.score1 - game.score2 : game.score2 - game.score1;
-    return margin > challenge.margin;
+    return margin >= challenge.margin;
   }
   if (RESULT_OPTIONS.includes(pick)) return pick === result;
   if (pick === "1X") return result === "1" || result === "X";
