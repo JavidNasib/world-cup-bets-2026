@@ -5,6 +5,7 @@ const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wor
 const ESPN_FRIENDLY_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/scoreboard";
 const STORAGE_KEY = "worldCupPredictionBank.v1";
 const ACTIVE_TAB_KEY = "worldCupPredictionBank.activeTab";
+const REMEMBERED_PLAYER_KEY = "worldCupPredictionBank.rememberedPlayer";
 const DATE_COUNTS = {
   "2026-06-10": 3,
   "2026-06-11": 2,
@@ -409,6 +410,30 @@ function restoreActiveTab() {
   activateTab(localStorage.getItem(ACTIVE_TAB_KEY) || "bet", false);
 }
 
+function rememberPlayerCredentials(playerName, pin) {
+  const name = String(playerName || "").trim();
+  const playerPin = String(pin || "").trim();
+  if (!name || playerPin.length < 4) return;
+  localStorage.setItem(REMEMBERED_PLAYER_KEY, JSON.stringify({ name, pin: playerPin }));
+}
+
+function rememberedPlayerCredentials() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REMEMBERED_PLAYER_KEY) || "null");
+    if (!saved?.name || !saved?.pin) return null;
+    return { name: String(saved.name), pin: String(saved.pin) };
+  } catch {
+    return null;
+  }
+}
+
+function restoreRememberedPlayer() {
+  const saved = rememberedPlayerCredentials();
+  if (!saved) return;
+  if ($("playerName") && !$("playerName").value) $("playerName").value = saved.name;
+  if ($("playerPin") && !$("playerPin").value) $("playerPin").value = saved.pin;
+}
+
 function firstGameTime(date) {
   const games = state.games[date] || [];
   const times = games.map((game) => game.time).filter(Boolean).sort();
@@ -426,9 +451,12 @@ function isLocked(date) {
   return first ? Date.now() >= first.getTime() - BET_LOCK_MINUTES_BEFORE_FIRST_GAME * 60 * 1000 : false;
 }
 
-function clearBetForm() {
-  $("playerName").value = "";
-  $("playerPin").value = "";
+function clearBetForm(options = {}) {
+  const keepIdentity = Boolean(options.keepIdentity);
+  if (!keepIdentity) {
+    $("playerName").value = "";
+    $("playerPin").value = "";
+  }
   selections = {};
   renderBetPanel();
 }
@@ -621,6 +649,7 @@ async function saveBet(date, playerName, pin, picks) {
   } else {
     saveLocal();
   }
+  return savedName;
 }
 
 async function syncFixtures(silent = false) {
@@ -1856,12 +1885,13 @@ function bindEvents() {
     const validIds = new Set((state.games[date] || []).map((game) => game.id));
     const picks = Object.fromEntries(Object.entries(selections).filter(([id, pick]) => validIds.has(id) && pick));
     try {
-      await saveBet(date, playerName, playerPin, picks);
+      const savedName = await saveBet(date, playerName, playerPin, picks);
+      rememberPlayerCredentials(savedName, playerPin);
     } catch (error) {
       return showToast(error.message);
     }
     selectedHistoryDate = date;
-    clearBetForm();
+    clearBetForm({ keepIdentity: true });
     await syncFixtures(true);
     renderAll();
     showToast("Bet saved. Same name and PIN can edit it before cutoff.");
@@ -1885,6 +1915,7 @@ function bindEvents() {
     if (existing.pinHash && existing.pinHash !== await hashPin(playerPin)) {
       return showToast("Wrong PIN for this saved bet.");
     }
+    rememberPlayerCredentials(savedName, playerPin);
     selections = { ...(getBetPicks(existing) || {}) };
     renderBetPanel();
     showToast("Login successful. Your saved picks are loaded.");
@@ -1997,6 +2028,7 @@ function bindEvents() {
 document.addEventListener("DOMContentLoaded", async () => {
   await initStorage();
   bindEvents();
+  restoreRememberedPlayer();
   renderAll();
   restoreActiveTab();
   try {
