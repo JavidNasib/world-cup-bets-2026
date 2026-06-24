@@ -645,7 +645,7 @@ textarea {
   font-size: 1rem;
 }
 
-.group-table-card {
+.selected-group-card {
   scroll-margin-top: 90px;
 }
 
@@ -678,10 +678,15 @@ textarea {
   min-height: 44px;
   border: 1px solid rgba(0, 104, 84, 0.22);
   border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--soft);
+  color: var(--accent);
   font-weight: 950;
-  cursor: pointer;
+}
+
+.group-chip-button.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .group-chip-button:disabled {
