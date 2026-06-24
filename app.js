@@ -103,7 +103,6 @@ let finalSyncTimer = null;
 let winnerBannerReady = false;
 let selectedHistoryDate = "";
 let selectedAdminLateDate = "";
-let selectedStatsGroupName = "";
 let state = {
   settings: {
     entryAmount: 1,
@@ -1097,9 +1096,8 @@ function bindEvents() {
   $("statsList")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-stats-group]");
     if (!button || button.disabled) return;
-    selectedStatsGroupName = button.dataset.statsGroup;
-    renderStats();
-    $("selectedStatsGroup")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const letter = button.dataset.statsGroup.replace("Group ", "");
+    $(`statsGroup-${letter}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   $("playerName")?.addEventListener("input", renderBetPanel);
@@ -2016,8 +2014,16 @@ function renderRecentScores(game, group) {
 function renderGroupButton(groupLetter, groupsByName) {
   const groupName = `Group ${groupLetter}`;
   const disabled = groupsByName[groupName] ? "" : " disabled";
-  const active = selectedStatsGroupName === groupName ? " active" : "";
-  return `<button class="group-chip-button${active}" type="button" data-stats-group="${groupName}"${disabled}>${groupLetter}</button>`;
+  return `<button class="group-chip-button" type="button" data-stats-group="${groupName}"${disabled}>${groupLetter}</button>`;
+}
+
+function renderPathText(text, groupsByName) {
+  return String(text || "").split(/(Group\s+[A-L]|[A-L])/g).map((part) => {
+    const groupMatch = part.match(/^Group\s+([A-L])$/);
+    if (groupMatch) return `Group ${renderGroupButton(groupMatch[1], groupsByName)}`;
+    if (/^[A-L]$/.test(part)) return renderGroupButton(part, groupsByName);
+    return escapeHtml(part);
+  }).join("");
 }
 
 function renderKnockoutPath(groups) {
@@ -2029,23 +2035,28 @@ function renderKnockoutPath(groups) {
         <thead><tr><th>Group</th><th>1st place plays</th><th>2nd place plays</th><th>3rd place, if qualifies, can play</th></tr></thead>
         <tbody>${KNOCKOUT_PATHS.map(([letter, first, second, third]) => `<tr>
           <td>${renderGroupButton(letter, groupsByName)}</td>
-          <td>${escapeHtml(first)}</td>
-          <td>${escapeHtml(second)}</td>
-          <td>${escapeHtml(third)}</td>
+          <td>${renderPathText(first, groupsByName)}</td>
+          <td>${renderPathText(second, groupsByName)}</td>
+          <td>${renderPathText(third, groupsByName)}</td>
         </tr>`).join("")}</tbody>
       </table>
     </div>
   </section>`;
 }
 
-function renderSelectedGroupTable(groups) {
-  const group = groups.find((item) => item.name === selectedStatsGroupName) || groups[0];
-  if (!group) return "";
-  selectedStatsGroupName = group.name;
-  return `<section class="stats-section selected-group-card" id="selectedStatsGroup">
-    <div class="game-meta"><strong>${escapeHtml(group.name)} current table</strong><span>${group.teams.map((team) => escapeHtml(team)).join(", ")}</span></div>
-    ${renderGroupTable(group)}
-  </section>`;
+function renderAllGroupTables(groups) {
+  return groups.map((group) => {
+    const letter = group.name.replace("Group ", "");
+    return `<details class="stats-card group-table-card" id="statsGroup-${letter}" open>
+      <summary>
+        <span>
+          <strong>${escapeHtml(group.name)} current table</strong>
+          <em>${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
+        </span>
+      </summary>
+      <div class="stats-card-body">${renderGroupTable(group)}</div>
+    </details>`;
+  }).join("");
 }
 
 function renderStats() {
@@ -2081,7 +2092,7 @@ function renderStats() {
         </div>
       </details>`;
     }).join("");
-    list.innerHTML = `${renderKnockoutPath(groups)}${renderSelectedGroupTable(groups)}${gameCards}`;
+    list.innerHTML = `${renderKnockoutPath(groups)}${renderAllGroupTables(groups)}${gameCards}`;
   } catch (error) {
     list.innerHTML = `<div class="empty">Statistics could not load. Please refresh the page.</div>`;
   }
