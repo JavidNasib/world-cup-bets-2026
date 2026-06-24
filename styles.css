@@ -631,6 +631,68 @@ textarea {
   font-size: 0.98rem;
 }
 
+.stats-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.stats-section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.selected-group-card {
+  scroll-margin-top: 90px;
+}
+
+.knockout-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.knockout-table {
+  width: 100%;
+  min-width: 660px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.knockout-table th,
+.knockout-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.knockout-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.group-chip-button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid rgba(0, 104, 84, 0.22);
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--accent);
+  font-weight: 950;
+}
+
+.group-chip-button.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.group-chip-button:disabled {
+  opacity: 0.35;
+}
+
 .stats-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
@@ -1135,6 +1197,10 @@ textarea {
 
   .stats-card summary {
     display: grid;
+  }
+
+  .knockout-table {
+    min-width: 620px;
   }
 
   .recent-score-grid {

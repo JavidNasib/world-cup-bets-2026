@@ -59,8 +59,23 @@ const SPECIAL_GAME_LOCK_OVERRIDES = new Set(["760421"]);
 const SPECIAL_GAME_INDEX_OVERRIDES = { 760421: 4 };
 const CHEAT_WARNING = "Fuck you Rafiz, did you think I dont know?";
 const H2H_NOTES = {
+  "Brazil|Scotland": "World Cup meetings: 1974 draw 0-0; 1982 Brazil won 4-1; 1990 Brazil won 1-0; 1998 Brazil won 2-1.",
   "Canada|Switzerland": "Previous meeting: Switzerland vs Canada, 2002 friendly - Canada won 3-1."
 };
+const KNOCKOUT_PATHS = [
+  ["A", "3rd from C/E/F/H/I", "2nd Group B", "1st Group E or G"],
+  ["B", "3rd from E/F/G/I/J", "2nd Group A", "1st Group D or E"],
+  ["C", "2nd Group F", "1st Group F", "1st Group A/E/I"],
+  ["D", "3rd from B/E/F/I/J", "2nd Group G", "1st Group E/I/K"],
+  ["E", "3rd from A/B/C/D/F", "2nd Group I", "1st Group A/B/D/G/K/L"],
+  ["F", "2nd Group C", "1st Group C", "1st Group A/B/D/E/I"],
+  ["G", "3rd from A/E/H/I/J", "2nd Group D", "1st Group B/I"],
+  ["H", "2nd Group J", "1st Group J", "1st Group A/G/I/L"],
+  ["I", "3rd from C/D/F/G/H", "2nd Group E", "1st Group A/B/D/G/K/L"],
+  ["J", "2nd Group H", "1st Group H", "1st Group B/D/G/K/L"],
+  ["K", "3rd from D/E/I/J/L", "2nd Group L", "1st Group L"],
+  ["L", "3rd from E/H/I/J/K", "2nd Group K", "1st Group K"]
+];
 const $ = (id) => document.getElementById(id);
 const PLACEHOLDER_PLAYER_RE = /^Player [1-7]$/;
 const DEFAULT_POINT_VALUES = {
@@ -88,6 +103,7 @@ let finalSyncTimer = null;
 let winnerBannerReady = false;
 let selectedHistoryDate = "";
 let selectedAdminLateDate = "";
+let selectedStatsGroupName = "";
 let state = {
   settings: {
     entryAmount: 1,
@@ -1078,6 +1094,13 @@ function bindEvents() {
   });
 
   $("statsDateSelect")?.addEventListener("change", renderStats);
+  $("statsList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-stats-group]");
+    if (!button || button.disabled) return;
+    selectedStatsGroupName = button.dataset.statsGroup;
+    renderStats();
+    $("selectedStatsGroup")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 
   $("playerName")?.addEventListener("input", renderBetPanel);
 
@@ -1990,6 +2013,41 @@ function renderRecentScores(game, group) {
   </div>`;
 }
 
+function renderGroupButton(groupLetter, groupsByName) {
+  const groupName = `Group ${groupLetter}`;
+  const disabled = groupsByName[groupName] ? "" : " disabled";
+  const active = selectedStatsGroupName === groupName ? " active" : "";
+  return `<button class="group-chip-button${active}" type="button" data-stats-group="${groupName}"${disabled}>${groupLetter}</button>`;
+}
+
+function renderKnockoutPath(groups) {
+  const groupsByName = Object.fromEntries(groups.map((group) => [group.name, group]));
+  return `<section class="stats-section">
+    <h3>Round path by group</h3>
+    <div class="knockout-table-wrap">
+      <table class="knockout-table">
+        <thead><tr><th>Group</th><th>1st place plays</th><th>2nd place plays</th><th>3rd place, if qualifies, can play</th></tr></thead>
+        <tbody>${KNOCKOUT_PATHS.map(([letter, first, second, third]) => `<tr>
+          <td>${renderGroupButton(letter, groupsByName)}</td>
+          <td>${escapeHtml(first)}</td>
+          <td>${escapeHtml(second)}</td>
+          <td>${escapeHtml(third)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function renderSelectedGroupTable(groups) {
+  const group = groups.find((item) => item.name === selectedStatsGroupName) || groups[0];
+  if (!group) return "";
+  selectedStatsGroupName = group.name;
+  return `<section class="stats-section selected-group-card" id="selectedStatsGroup">
+    <div class="game-meta"><strong>${escapeHtml(group.name)} current table</strong><span>${group.teams.map((team) => escapeHtml(team)).join(", ")}</span></div>
+    ${renderGroupTable(group)}
+  </section>`;
+}
+
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2000,8 +2058,8 @@ function renderStats() {
       list.innerHTML = `<div class="empty">No statistics available for this match day yet.</div>`;
       return;
     }
-    const { teamToGroup } = inferGroups();
-    list.innerHTML = games.map((game, index) => {
+    const { groups, teamToGroup } = inferGroups();
+    const gameCards = games.map((game, index) => {
       const group = groupForGame(game, teamToGroup);
       const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
       const timeLabel = game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD";
@@ -2023,6 +2081,7 @@ function renderStats() {
         </div>
       </details>`;
     }).join("");
+    list.innerHTML = `${renderKnockoutPath(groups)}${renderSelectedGroupTable(groups)}${gameCards}`;
   } catch (error) {
     list.innerHTML = `<div class="empty">Statistics could not load. Please refresh the page.</div>`;
   }
