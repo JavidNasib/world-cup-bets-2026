@@ -1993,34 +1993,39 @@ function renderRecentScores(game, group) {
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
-  const date = $("statsDateSelect")?.value || getActiveDate();
-  const games = (state.games[date] || []).filter((game) => !isPlaceholderGame(game));
-  if (!games.length) {
-    list.innerHTML = `<div class="empty">No statistics available for this match day yet.</div>`;
-    return;
+  try {
+    const date = $("statsDateSelect")?.value || getActiveDate();
+    const games = (state.games[date] || []).filter((game) => !isPlaceholderGame(game));
+    if (!games.length) {
+      list.innerHTML = `<div class="empty">No statistics available for this match day yet.</div>`;
+      return;
+    }
+    const { teamToGroup } = inferGroups();
+    list.innerHTML = games.map((game, index) => {
+      const group = groupForGame(game, teamToGroup);
+      const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
+      const timeLabel = game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD";
+      return `<details class="stats-card" ${index === 0 ? "open" : ""}>
+        <summary>
+          <span>
+            <strong>G${game.index} ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
+            <em>${escapeHtml(group.name)} - ${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
+          </span>
+          <span>${timeLabel}</span>
+        </summary>
+        <div class="stats-card-body">
+          <h3>${escapeHtml(group.name)} current table</h3>
+          ${renderGroupTable(group)}
+          <h3>Recent World Cup scores</h3>
+          ${renderRecentScores(game, group)}
+          <h3>H2H Previous meeting</h3>
+          <p class="h2h-note">${escapeHtml(h2h)}</p>
+        </div>
+      </details>`;
+    }).join("");
+  } catch (error) {
+    list.innerHTML = `<div class="empty">Statistics could not load. Please refresh the page.</div>`;
   }
-  const { teamToGroup } = inferGroups();
-  list.innerHTML = games.map((game, index) => {
-    const group = groupForGame(game, teamToGroup);
-    const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
-    return `<details class="stats-card" ${index === 0 ? "open" : ""}>
-      <summary>
-        <span>
-          <strong>G${game.index} ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
-          <em>${escapeHtml(group.name)} - ${group.teams.map(escapeHtml).join(", ")}</em>
-        </span>
-        <span>${game.time ? shortTime(game.time) : "Time TBD"}</span>
-      </summary>
-      <div class="stats-card-body">
-        <h3>${escapeHtml(group.name)} current table</h3>
-        ${renderGroupTable(group)}
-        <h3>Recent World Cup scores</h3>
-        ${renderRecentScores(game, group)}
-        <h3>H2H Previous meeting</h3>
-        <p class="h2h-note">${escapeHtml(h2h)}</p>
-      </div>
-    </details>`;
-  }).join("");
 }
 
 function validateSelections(date) {
