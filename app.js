@@ -53,9 +53,14 @@ const ABSOLUTE_MAX_PLAYERS = 7;
 const BET_LOCK_MINUTES_BEFORE_FIRST_GAME = 15;
 const GAME_RESULT_SYNC_DELAY_MS = 2 * 60 * 60 * 1000 + 15 * 60 * 1000;
 const TEST_ONLY_DATES = new Set(["2026-06-10"]);
+const GROUP_STAGE_START_DATE = "2026-06-11";
+const GROUP_STAGE_END_DATE = "2026-06-27";
 const SPECIAL_GAME_LOCK_OVERRIDES = new Set(["760421"]);
 const SPECIAL_GAME_INDEX_OVERRIDES = { 760421: 4 };
 const CHEAT_WARNING = "Fuck you Rafiz, did you think I dont know?";
+const H2H_NOTES = {
+  "Canada|Switzerland": "Previous meeting: Switzerland vs Canada, 2002 friendly - Canada won 3-1."
+};
 const $ = (id) => document.getElementById(id);
 const PLACEHOLDER_PLAYER_RE = /^Player [1-7]$/;
 const DEFAULT_POINT_VALUES = {
@@ -742,6 +747,8 @@ function renderAll() {
   renderTables();
   renderHistory();
   renderResults();
+  renderStatsDates();
+  renderStats();
   lucide.createIcons();
 }
 
@@ -1069,6 +1076,8 @@ function bindEvents() {
     selections = {};
     renderBetPanel();
   });
+
+  $("statsDateSelect")?.addEventListener("change", renderStats);
 
   $("playerName")?.addEventListener("input", renderBetPanel);
 
@@ -1825,6 +1834,195 @@ function renderResults() {
     .join("") || `<div class="empty">Results will appear here after games finish or admin enters scores.</div>`;
 }
 
+function statsDates() {
+  return Object.keys(DATE_COUNTS).filter((date) => (state.games[date] || []).some((game) => !isPlaceholderGame(game)));
+}
+
+function renderStatsDates() {
+  const select = $("statsDateSelect");
+  if (!select) return;
+  const dates = statsDates();
+  const current = select.value || getActiveDate() || nearestPlayableDate();
+  select.innerHTML = dates
+    .map((date) => `<option value="${date}">${prettyDate(date)} - ${(state.games[date] || []).length} game${(state.games[date] || []).length === 1 ? "" : "s"}</option>`)
+    .join("");
+  select.value = dates.includes(current) ? current : dates[0] || "";
+}
+
+function h2hKey(team1, team2) {
+  return [team1, team2].sort((a, b) => a.localeCompare(b)).join("|");
+}
+
+function groupStageGames() {
+  return Object.values(state.games)
+    .flat()
+    .filter((game) => game.date >= GROUP_STAGE_START_DATE
+      && game.date <= GROUP_STAGE_END_DATE
+      && !isPlaceholderGame(game)
+      && game.team1
+      && game.team2);
+}
+
+function inferGroups() {
+  const parent = {};
+  const firstSeen = {};
+  const find = (team) => {
+    parent[team] ||= team;
+    if (parent[team] !== team) parent[team] = find(parent[team]);
+    return parent[team];
+  };
+  const union = (team1, team2) => {
+    const root1 = find(team1);
+    const root2 = find(team2);
+    if (root1 !== root2) parent[root2] = root1;
+  };
+  groupStageGames()
+    .sort((a, b) => `${a.date}-${a.index}`.localeCompare(`${b.date}-${b.index}`))
+    .forEach((game) => {
+      union(game.team1, game.team2);
+      firstSeen[game.team1] ||= `${game.date}-${game.index}`;
+      firstSeen[game.team2] ||= `${game.date}-${game.index}`;
+    });
+  const groupsByRoot = {};
+  Object.keys(parent).forEach((team) => {
+    groupsByRoot[find(team)] ||= [];
+    groupsByRoot[find(team)].push(team);
+  });
+  const groups = Object.values(groupsByRoot)
+    .map((teams) => ({
+      teams: teams.sort((a, b) => a.localeCompare(b)),
+      first: teams.map((team) => firstSeen[team] || "9999").sort()[0]
+    }))
+    .sort((a, b) => a.first.localeCompare(b.first))
+    .map((group, index) => ({
+      name: `Group ${String.fromCharCode(65 + index)}`,
+      teams: group.teams
+    }));
+  const teamToGroup = {};
+  groups.forEach((group) => group.teams.forEach((team) => {
+    teamToGroup[team] = group;
+  }));
+  return { groups, teamToGroup };
+}
+
+function groupForGame(game, teamToGroup) {
+  return teamToGroup[game.team1] || teamToGroup[game.team2] || { name: "Group TBD", teams: [game.team1, game.team2].filter(Boolean) };
+}
+
+function groupTable(group) {
+  const rows = {};
+  group.teams.forEach((team) => {
+    rows[team] = { team, played: 0, pts: 0, gf: 0, ga: 0, gd: 0 };
+  });
+  groupStageGames()
+    .filter((game) => completedGame(game) && rows[game.team1] && rows[game.team2])
+    .forEach((game) => {
+      const home = rows[game.team1];
+      const away = rows[game.team2];
+      home.played += 1;
+      away.played += 1;
+      home.gf += Number(game.score1) || 0;
+      home.ga += Number(game.score2) || 0;
+      away.gf += Number(game.score2) || 0;
+      away.ga += Number(game.score1) || 0;
+      if (game.score1 > game.score2) home.pts += 3;
+      else if (game.score1 < game.score2) away.pts += 3;
+      else {
+        home.pts += 1;
+        away.pts += 1;
+      }
+    });
+  Object.values(rows).forEach((row) => {
+    row.gd = row.gf - row.ga;
+  });
+  return Object.values(rows).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
+}
+
+function teamRecentScores(team, group) {
+  return groupStageGames()
+    .filter((game) => completedGame(game) && (game.team1 === team || game.team2 === team) && group.teams.includes(game.team1) && group.teams.includes(game.team2))
+    .sort((a, b) => `${b.date}-${b.index}`.localeCompare(`${a.date}-${a.index}`))
+    .slice(0, 4)
+    .map((game) => {
+      const isTeam1 = game.team1 === team;
+      const goalsFor = isTeam1 ? game.score1 : game.score2;
+      const goalsAgainst = isTeam1 ? game.score2 : game.score1;
+      const opponent = isTeam1 ? game.team2 : game.team1;
+      const result = goalsFor > goalsAgainst ? "W" : goalsFor < goalsAgainst ? "L" : "D";
+      return { label: `${team} vs ${opponent}`, score: `${goalsFor}-${goalsAgainst} ${result}` };
+    });
+}
+
+function renderGroupTable(group) {
+  return `<div class="stats-table-wrap">
+    <table class="stats-table">
+      <thead><tr><th>Rank</th><th>Team</th><th>Pts</th><th>Played</th><th>GF</th><th>GA</th><th>GD</th></tr></thead>
+      <tbody>${groupTable(group).map((row, index) => `<tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(row.team)}</td>
+        <td>${row.pts}</td>
+        <td>${row.played}</td>
+        <td>${row.gf}</td>
+        <td>${row.ga}</td>
+        <td>${row.gd > 0 ? "+" : ""}${row.gd}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderRecentScores(game, group) {
+  const team1Scores = teamRecentScores(game.team1, group);
+  const team2Scores = teamRecentScores(game.team2, group);
+  const maxRows = Math.max(team1Scores.length, team2Scores.length, 1);
+  return `<div class="recent-score-grid">
+    <div class="recent-score-head">${escapeHtml(game.team1)}</div>
+    <div class="recent-score-head">Score</div>
+    <div class="recent-score-head">${escapeHtml(game.team2)}</div>
+    <div class="recent-score-head">Score</div>
+    ${Array.from({ length: maxRows }).map((_, index) => {
+      const left = team1Scores[index];
+      const right = team2Scores[index];
+      return `<div>${left ? escapeHtml(left.label) : "-"}</div>
+        <strong>${left ? escapeHtml(left.score) : "-"}</strong>
+        <div>${right ? escapeHtml(right.label) : "-"}</div>
+        <strong>${right ? escapeHtml(right.score) : "-"}</strong>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderStats() {
+  const list = $("statsList");
+  if (!list) return;
+  const date = $("statsDateSelect")?.value || getActiveDate();
+  const games = (state.games[date] || []).filter((game) => !isPlaceholderGame(game));
+  if (!games.length) {
+    list.innerHTML = `<div class="empty">No statistics available for this match day yet.</div>`;
+    return;
+  }
+  const { teamToGroup } = inferGroups();
+  list.innerHTML = games.map((game, index) => {
+    const group = groupForGame(game, teamToGroup);
+    const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
+    return `<details class="stats-card" ${index === 0 ? "open" : ""}>
+      <summary>
+        <span>
+          <strong>G${game.index} ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
+          <em>${escapeHtml(group.name)} - ${group.teams.map(escapeHtml).join(", ")}</em>
+        </span>
+        <span>${game.time ? shortTime(game.time) : "Time TBD"}</span>
+      </summary>
+      <div class="stats-card-body">
+        <h3>${escapeHtml(group.name)} current table</h3>
+        ${renderGroupTable(group)}
+        <h3>Recent World Cup scores</h3>
+        ${renderRecentScores(game, group)}
+        <h3>H2H Previous meeting</h3>
+        <p class="h2h-note">${escapeHtml(h2h)}</p>
+      </div>
+    </details>`;
+  }).join("");
+}
+
 function validateSelections(date) {
   const games = state.games[date] || [];
   const validIds = new Set(games.map((game) => game.id));
@@ -1854,6 +2052,8 @@ function bindEvents() {
     selections = {};
     renderBetPanel();
   });
+
+  $("statsDateSelect")?.addEventListener("change", renderStats);
 
   $("playerName")?.addEventListener("input", renderBetPanel);
 

@@ -41,6 +41,7 @@
 
         <nav class="tabs" aria-label="Sections">
           <button class="tab active" data-tab="bet" type="button"><i data-lucide="ticket"></i><span>Bet</span></button>
+          <button class="tab" data-tab="stats" type="button"><i data-lucide="line-chart"></i><span>Statistics</span></button>
           <button class="tab" data-tab="table" type="button"><i data-lucide="bar-chart-3"></i><span>Table</span></button>
           <button class="tab" data-tab="history" type="button"><i data-lucide="history"></i><span>History</span></button>
           <button class="tab" data-tab="results" type="button"><i data-lucide="list-checks"></i><span>Results</span></button>
@@ -88,6 +89,17 @@
               </button>
             </div>
           </form>
+        </section>
+
+        <section class="panel" id="statsPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Bet helper</p>
+              <h2>Statistics</h2>
+            </div>
+            <select id="statsDateSelect" aria-label="Statistics match day"></select>
+          </div>
+          <div id="statsList" class="stats-list"></div>
         </section>
 
         <section class="panel" id="tablePanel">
@@ -234,6 +246,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260623-8"></script>
+    <script src="./app.js?v=20260624-1"></script>
   </body>
 </html>

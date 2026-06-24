@@ -567,6 +567,7 @@ textarea {
 .daily-list,
 .history-list,
 .results-list,
+.stats-list,
 .settlement-list {
   display: grid;
   gap: 10px;
@@ -576,11 +577,122 @@ textarea {
 .standing-card,
 .daily-card,
 .history-day,
+.stats-card,
 .settlement-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
   background: #fff;
+}
+
+.stats-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.stats-card summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.stats-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.stats-card summary span:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.stats-card summary strong {
+  font-size: 0.98rem;
+}
+
+.stats-card summary em,
+.stats-card summary span:last-child {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.stats-card-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.stats-card-body h3 {
+  margin: 6px 0 -4px;
+  font-size: 0.98rem;
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.stats-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+
+.stats-table th:nth-child(2),
+.stats-table td:nth-child(2) {
+  text-align: left;
+}
+
+.stats-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.recent-score-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr) 74px;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.86rem;
+}
+
+.recent-score-grid > * {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.recent-score-grid > :nth-last-child(-n + 4) {
+  border-bottom: 0;
+}
+
+.recent-score-head {
+  color: var(--accent);
+  background: var(--soft);
+  font-weight: 950;
+}
+
+.h2h-note {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .game-meta {
@@ -1019,6 +1131,18 @@ textarea {
   .history-page-button {
     width: 100%;
     min-width: 0;
+  }
+
+  .stats-card summary {
+    display: grid;
+  }
+
+  .recent-score-grid {
+    grid-template-columns: minmax(0, 1fr) 68px;
+  }
+
+  .recent-score-grid > :nth-child(4n + 3) {
+    border-left: 0;
   }
 
   .admin-match-row,
