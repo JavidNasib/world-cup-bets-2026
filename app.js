@@ -1858,8 +1858,16 @@ function renderStatsDates() {
   if (!select) return;
   const dates = statsDates();
   const current = select.value || getActiveDate() || nearestPlayableDate();
+  const { teamToGroup } = inferGroups();
   select.innerHTML = dates
-    .map((date) => `<option value="${date}">${prettyDate(date)} - ${(state.games[date] || []).length} game${(state.games[date] || []).length === 1 ? "" : "s"}</option>`)
+    .map((date) => {
+      const games = (state.games[date] || []).filter((game) => !isPlaceholderGame(game));
+      const groupLetters = [...new Set(games
+        .map((game) => groupForGame(game, teamToGroup).name.replace("Group ", ""))
+        .filter((letter) => letter && letter !== "TBD"))];
+      const groupLabel = groupLetters.length ? `, groups: ${groupLetters.join(",")}` : "";
+      return `<option value="${date}">${prettyDate(date)} - ${games.length} game${games.length === 1 ? "" : "s"}${groupLabel}</option>`;
+    })
     .join("");
   select.value = dates.includes(current) ? current : dates[0] || "";
 }
