@@ -346,6 +346,25 @@ h2 {
   margin-bottom: 14px;
 }
 
+.stats-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stats-controls select {
+  width: auto;
+  max-width: min(64vw, 360px);
+}
+
+.compact-button {
+  width: auto;
+  min-width: 90px;
+  padding: 10px 12px;
+}
+
 select,
 input,
 textarea {
@@ -671,6 +690,20 @@ textarea {
   font-size: 0.98rem;
 }
 
+.stats-card-body h4 {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.match-stat-block {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 104, 84, 0.16);
+  border-radius: 8px;
+  background: #fbfdfb;
+}
+
 .stats-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
@@ -759,6 +792,92 @@ textarea {
 
 .group-path-grid > :nth-last-child(-n + 4) {
   border-bottom: 0;
+}
+
+.path-panel {
+  margin-bottom: 10px;
+}
+
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.path-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.84rem;
+}
+
+.path-card strong {
+  color: var(--accent);
+}
+
+.path-card small {
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.stat-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.stat-metric,
+.stat-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stat-metric {
+  padding: 10px;
+}
+
+.stat-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.stat-metric strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.02rem;
+}
+
+.stat-card {
+  padding: 12px;
+}
+
+.stat-card h3 {
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.stat-breakdown {
+  display: grid;
+  gap: 8px;
+}
+
+.stat-break-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) repeat(4, minmax(70px, 1fr));
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfb;
+  font-size: 0.86rem;
 }
 
 .game-meta {
@@ -1204,12 +1323,31 @@ textarea {
     padding-right: 42px;
   }
 
+  .stats-controls {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .stats-controls select,
+  .compact-button {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
   .recent-score-grid {
     grid-template-columns: minmax(0, 1fr) 68px;
   }
 
   .recent-score-grid > :nth-child(4n + 3) {
     border-left: 0;
+  }
+
+  .stat-break-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .stat-break-row strong {
+    grid-column: 1 / -1;
   }
 
   .admin-match-row,

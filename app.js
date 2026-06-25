@@ -764,6 +764,7 @@ function renderAll() {
   renderResults();
   renderStatsDates();
   renderStats();
+  renderPlayerStats();
   lucide.createIcons();
 }
 
@@ -1093,6 +1094,10 @@ function bindEvents() {
   });
 
   $("statsDateSelect")?.addEventListener("change", renderStats);
+  $("pathToggleButton")?.addEventListener("click", () => {
+    $("knockoutPathPanel")?.classList.toggle("hidden");
+  });
+  $("playerStatsSelect")?.addEventListener("change", renderPlayerStats);
 
   $("playerName")?.addEventListener("input", renderBetPanel);
 
@@ -2030,6 +2035,52 @@ function renderGroupPath(group) {
     </div>`;
 }
 
+function statsGroupsForDate(date, teamToGroup) {
+  const groups = new Map();
+  (state.games[date] || [])
+    .filter((game) => !isPlaceholderGame(game))
+    .forEach((game) => {
+      const group = groupForGame(game, teamToGroup);
+      const key = group.name;
+      if (!groups.has(key)) groups.set(key, { group, games: [] });
+      groups.get(key).games.push(game);
+    });
+  return [...groups.values()];
+}
+
+function shortGameName(game) {
+  return `${game.team1} vs ${game.team2}`;
+}
+
+function renderMatchStats(game, group) {
+  const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
+  return `<section class="match-stat-block">
+    <h3>G${game.index} ${escapeHtml(shortGameName(game))}</h3>
+    <h4>Recent World Cup scores</h4>
+    ${renderRecentScores(game, group)}
+    <h4>H2H Previous meeting</h4>
+    <p class="h2h-note">${escapeHtml(h2h)}</p>
+  </section>`;
+}
+
+function renderKnockoutPathOverview(groups) {
+  if (!$("knockoutPathPanel")) return;
+  const rows = groups.map((group) => {
+    const letter = group.name.replace("Group ", "");
+    const path = GROUP_PATHS[letter] || ["-", "-", "-"];
+    const table = groupTable(group);
+    const first = table[0]?.team || "TBD";
+    const second = table[1]?.team || "TBD";
+    return `<article class="path-card">
+      <strong>${escapeHtml(group.name)}</strong>
+      <span>1st: ${escapeHtml(first)}</span>
+      <span>2nd: ${escapeHtml(second)}</span>
+      <small>${escapeHtml(path[0])} · ${escapeHtml(path[1])} · ${escapeHtml(path[2])}</small>
+    </article>`;
+  }).join("");
+  $("knockoutPathPanel").innerHTML = `<div class="path-grid">${rows}</div>`;
+}
+
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2040,15 +2091,16 @@ function renderStats() {
       list.innerHTML = `<div class="empty">No statistics available for this match day yet.</div>`;
       return;
     }
-    const { teamToGroup } = inferGroups();
-    list.innerHTML = games.map((game) => {
-      const group = groupForGame(game, teamToGroup);
-      const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
-      const timeLabel = game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD";
+    const { groups, teamToGroup } = inferGroups();
+    renderKnockoutPathOverview(groups);
+    list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
+      const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
+      const gameLabel = games.map(shortGameName).join(" & ");
+      const gameIndexes = games.map((game) => `G${game.index}`).join("/");
       return `<details class="stats-card">
         <summary>
           <span>
-            <strong>G${game.index} ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
+            <strong>${escapeHtml(gameIndexes)} ${escapeHtml(gameLabel)}</strong>
             <em>${escapeHtml(group.name)} - ${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
           </span>
           <span>${timeLabel}</span>
@@ -2056,10 +2108,7 @@ function renderStats() {
         <div class="stats-card-body">
           <h3>${escapeHtml(group.name)} current table</h3>
           ${renderGroupTable(group)}
-          <h3>Recent World Cup scores</h3>
-          ${renderRecentScores(game, group)}
-          <h3>H2H Previous meeting</h3>
-          <p class="h2h-note">${escapeHtml(h2h)}</p>
+          ${games.map((game) => renderMatchStats(game, group)).join("")}
           ${renderGroupPath(group)}
         </div>
       </details>`;
@@ -2067,6 +2116,176 @@ function renderStats() {
   } catch (error) {
     list.innerHTML = `<div class="empty">Statistics could not load. Please refresh the page.</div>`;
   }
+}
+
+const PICK_TYPE_LABELS = {
+  result: "1/X/2",
+  goals: "O2/U2",
+  both: "GG/NG",
+  double: "Double",
+  challenge: "Favorite+"
+};
+
+function emptyTypeStats() {
+  return Object.fromEntries(Object.keys(PICK_TYPE_LABELS).map((kind) => [kind, { total: 0, correct: 0, wrong: 0, pending: 0, points: 0 }]));
+}
+
+function playerStats(player, calc) {
+  const stats = {
+    player,
+    days: 0,
+    totalPicks: 0,
+    correct: 0,
+    wrong: 0,
+    pending: 0,
+    basePoints: 0,
+    bonusPoints: 0,
+    soloBonuses: 0,
+    perfectBonuses: 0,
+    bestDay: null,
+    worstDay: null,
+    typeStats: emptyTypeStats(),
+    daily: []
+  };
+
+  Object.keys(DATE_COUNTS).forEach((date) => {
+    if (!countedDate(date)) return;
+    const bet = state.bets[date]?.[player];
+    if (!bet) return;
+    const picks = getBetPicks(bet) || {};
+    const games = state.games[date] || [];
+    const completedDay = games.length > 0 && games.every(completedGame);
+    const detail = dailyPlayerPointBreakdown(date, player);
+    let dayCorrect = 0;
+    let dayWrong = 0;
+    let dayPending = 0;
+
+    Object.entries(picks).forEach(([gameId, pick]) => {
+      const game = games.find((item) => item.id === gameId);
+      const kind = pickKind(pick);
+      if (!game || !kind || !stats.typeStats[kind]) return;
+      stats.totalPicks += 1;
+      stats.typeStats[kind].total += 1;
+      if (!completedGame(game)) {
+        stats.pending += 1;
+        stats.typeStats[kind].pending += 1;
+        dayPending += 1;
+        return;
+      }
+      if (pickWins(pick, game)) {
+        stats.correct += 1;
+        stats.typeStats[kind].correct += 1;
+        stats.typeStats[kind].points += pickPoints(pick);
+        dayCorrect += 1;
+      } else {
+        stats.wrong += 1;
+        stats.typeStats[kind].wrong += 1;
+        dayWrong += 1;
+      }
+    });
+
+    if (completedDay) {
+      stats.days += 1;
+      stats.basePoints += detail.base;
+      stats.bonusPoints += detail.bonus;
+      if (detail.soloBonus > 0) stats.soloBonuses += detail.soloBonus / Math.max(1, soloGameBonus());
+      if (detail.perfectBonus > 0) stats.perfectBonuses += detail.perfectBonus / Math.max(1, perfectDayBonus());
+      const dayRow = { date, points: detail.total, base: detail.base, bonus: detail.bonus, correct: dayCorrect, wrong: dayWrong, pending: dayPending };
+      stats.daily.push(dayRow);
+      if (!stats.bestDay || dayRow.points > stats.bestDay.points) stats.bestDay = dayRow;
+      if (!stats.worstDay || dayRow.points < stats.worstDay.points) stats.worstDay = dayRow;
+    }
+  });
+
+  const total = calc.totals[player] || { entries: 0, winnings: 0, balance: 0, points: 0 };
+  stats.entries = total.entries || 0;
+  stats.payout = total.winnings || 0;
+  stats.net = total.balance || 0;
+  stats.points = total.points || 0;
+  stats.accuracy = stats.correct + stats.wrong ? Math.round((stats.correct / (stats.correct + stats.wrong)) * 100) : 0;
+  return stats;
+}
+
+function renderStatMetric(label, value) {
+  return `<article class="stat-metric"><span>${escapeHtml(label)}</span><strong>${value}</strong></article>`;
+}
+
+function renderPlayerStats() {
+  const select = $("playerStatsSelect");
+  const summary = $("playerStatsSummary");
+  const list = $("playerStatsList");
+  if (!select || !summary || !list) return;
+  const calc = calculate();
+  const players = calc.players;
+  const current = select.value || "__all__";
+  select.innerHTML = [`<option value="__all__">All players</option>`, ...players.map((player) => `<option value="${escapeHtml(player)}">${escapeHtml(player)}</option>`)].join("");
+  select.value = current === "__all__" || players.includes(current) ? current : "__all__";
+
+  const rows = players.map((player) => playerStats(player, calc));
+  if (select.value === "__all__") {
+    const totalPicks = rows.reduce((sum, row) => sum + row.totalPicks, 0);
+    const totalCorrect = rows.reduce((sum, row) => sum + row.correct, 0);
+    const totalWrong = rows.reduce((sum, row) => sum + row.wrong, 0);
+    const totalBonus = rows.reduce((sum, row) => sum + row.bonusPoints, 0);
+    summary.innerHTML = [
+      renderStatMetric("Players", rows.length),
+      renderStatMetric("Total picks", totalPicks),
+      renderStatMetric("Correct / Wrong", `${totalCorrect} / ${totalWrong}`),
+      renderStatMetric("Bonus points", totalBonus)
+    ].join("");
+    list.innerHTML = `<div class="standings-table">
+      <div class="standings-row standings-head"><span>Player</span><span>Points</span><span>Accuracy</span><span>Best day</span><span>Net</span></div>
+      ${rows.sort((a, b) => b.points - a.points).map((row) => `<div class="standings-row">
+        <span><strong>${escapeHtml(row.player)}</strong></span>
+        <span class="points-value">${row.points}</span>
+        <span>${row.accuracy}%</span>
+        <span>${row.bestDay ? `${row.bestDay.points} pts` : "-"}</span>
+        <span class="money ${row.net >= 0 ? "positive" : "negative"}">${money(row.net)}</span>
+      </div>`).join("")}
+    </div>`;
+    return;
+  }
+
+  const row = rows.find((item) => item.player === select.value);
+  if (!row) {
+    summary.innerHTML = "";
+    list.innerHTML = `<div class="empty">No player selected.</div>`;
+    return;
+  }
+  summary.innerHTML = [
+    renderStatMetric("Total points", row.points),
+    renderStatMetric("Accuracy", `${row.accuracy}%`),
+    renderStatMetric("Correct / Wrong", `${row.correct} / ${row.wrong}`),
+    renderStatMetric("Best day", row.bestDay ? `${prettyDate(row.bestDay.date)} · ${row.bestDay.points} pts` : "-"),
+    renderStatMetric("Worst day", row.worstDay ? `${prettyDate(row.worstDay.date)} · ${row.worstDay.points} pts` : "-"),
+    renderStatMetric("Bonus points", row.bonusPoints),
+    renderStatMetric("Entry paid", money(row.entries)),
+    renderStatMetric("Net", `<span class="${row.net >= 0 ? "positive" : "negative"}">${money(row.net)}</span>`)
+  ].join("");
+  const typeRows = Object.entries(row.typeStats).map(([kind, value]) => `<div class="stat-break-row">
+    <strong>${PICK_TYPE_LABELS[kind]}</strong>
+    <span>${value.correct}/${value.total} correct</span>
+    <span>${value.wrong} wrong</span>
+    <span>${value.pending} pending</span>
+    <span>${value.points} pts</span>
+  </div>`).join("");
+  const dailyRows = row.daily.length
+    ? row.daily.slice().reverse().map((day) => `<div class="stat-break-row">
+        <strong>${prettyDate(day.date)}</strong>
+        <span>${day.points} pts</span>
+        <span>${day.correct} correct</span>
+        <span>${day.wrong} wrong</span>
+        <span>${day.bonus ? `+${day.bonus} bonus` : "No bonus"}</span>
+      </div>`).join("")
+    : `<div class="empty">No completed counted match days yet.</div>`;
+  list.innerHTML = `<article class="stat-card">
+      <h3>Pick Type Breakdown</h3>
+      <div class="stat-breakdown">${typeRows}</div>
+    </article>
+    <article class="stat-card">
+      <h3>Daily Progress</h3>
+      <div class="stat-breakdown">${dailyRows}</div>
+    </article>`;
 }
 
 function validateSelections(date) {

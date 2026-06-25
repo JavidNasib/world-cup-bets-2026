@@ -42,6 +42,7 @@
         <nav class="tabs" aria-label="Sections">
           <button class="tab active" data-tab="bet" type="button"><i data-lucide="ticket"></i><span>Bet</span></button>
           <button class="tab" data-tab="stats" type="button"><i data-lucide="line-chart"></i><span>Statistics</span></button>
+          <button class="tab" data-tab="playerStats" type="button"><i data-lucide="users-round"></i><span>Player Stats</span></button>
           <button class="tab" data-tab="table" type="button"><i data-lucide="bar-chart-3"></i><span>Table</span></button>
           <button class="tab" data-tab="history" type="button"><i data-lucide="history"></i><span>History</span></button>
           <button class="tab" data-tab="results" type="button"><i data-lucide="list-checks"></i><span>Results</span></button>
@@ -97,9 +98,28 @@
               <p class="eyebrow">Bet helper</p>
               <h2>Statistics</h2>
             </div>
-            <select id="statsDateSelect" aria-label="Statistics match day"></select>
+            <div class="stats-controls">
+              <select id="statsDateSelect" aria-label="Statistics match day"></select>
+              <button class="secondary-button compact-button" id="pathToggleButton" type="button">
+                <i data-lucide="git-branch"></i>
+                <span>Path</span>
+              </button>
+            </div>
           </div>
+          <div id="knockoutPathPanel" class="path-panel hidden"></div>
           <div id="statsList" class="stats-list"></div>
+        </section>
+
+        <section class="panel" id="playerStatsPanel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Player report</p>
+              <h2>Player Stats</h2>
+            </div>
+            <select id="playerStatsSelect" aria-label="Choose player statistics"></select>
+          </div>
+          <div id="playerStatsSummary" class="stat-metrics"></div>
+          <div id="playerStatsList" class="stats-list"></div>
         </section>
 
         <section class="panel" id="tablePanel">
@@ -246,6 +266,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260624-9"></script>
+    <script src="./app.js?v=20260625-1"></script>
   </body>
 </html>
