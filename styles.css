@@ -861,6 +861,15 @@ textarea {
   font-weight: 800;
 }
 
+.path-table td em {
+  display: block;
+  margin-top: 5px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
 .path-table tr:last-child td {
   border-bottom: 0;
 }

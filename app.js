@@ -2094,8 +2094,46 @@ function renderKnockoutPathOverview(groups) {
   $("knockoutPathPanel").innerHTML = `<div class="path-grid">${rows}</div>`;
 }
 
+function pathPlaceNumber(pathText) {
+  if (/1st/.test(pathText)) return 1;
+  if (/2nd/.test(pathText)) return 2;
+  if (/3rd/.test(pathText)) return 3;
+  return 0;
+}
+
+function pathGroupLetters(pathText) {
+  const cleaned = String(pathText || "")
+    .replace(/Group/gi, " ")
+    .replace(/from/gi, " ")
+    .replace(/or/gi, "/");
+  return [...new Set(cleaned.match(/\b[A-L]\b/g) || [])];
+}
+
+function pathCurrentTeams(pathText, groupsByLetter) {
+  const place = pathPlaceNumber(pathText);
+  const letters = pathGroupLetters(pathText);
+  if (!place || !letters.length) return "TBD";
+  const teams = letters
+    .map((letter) => {
+      const row = groupTable(groupsByLetter[letter] || { teams: [] })[place - 1];
+      if (!row) return "";
+      const prefix = letters.length > 1 ? `${letter}: ` : "";
+      const gd = `${row.gd > 0 ? "+" : ""}${row.gd}`;
+      return `${prefix}${row.team}, ${row.pts} pts, GD ${gd}`;
+    })
+    .filter(Boolean);
+  return teams.length ? teams.join(" / ") : "TBD";
+}
+
+function renderPathCell(team, pathText, groupsByLetter) {
+  return `<strong>${escapeHtml(team)}</strong>
+    <span>${escapeHtml(pathText)}</span>
+    <em>Right now: ${escapeHtml(pathCurrentTeams(pathText, groupsByLetter))}</em>`;
+}
+
 function renderPathTableOverview(groups) {
   if (!$("knockoutPathPanel")) return;
+  const groupsByLetter = Object.fromEntries(groups.map((group) => [group.name.replace("Group ", ""), group]));
   const rows = groups.map((group) => {
     const letter = group.name.replace("Group ", "");
     const path = GROUP_PATHS[letter] || ["-", "-", "-"];
@@ -2105,9 +2143,9 @@ function renderPathTableOverview(groups) {
     const third = table[2]?.team || "TBD";
     return `<tr>
       <td>${escapeHtml(group.name)}</td>
-      <td><strong>${escapeHtml(first)}</strong><span>${escapeHtml(path[0])}</span></td>
-      <td><strong>${escapeHtml(second)}</strong><span>${escapeHtml(path[1])}</span></td>
-      <td><strong>${escapeHtml(third)}</strong><span>${escapeHtml(path[2])}</span></td>
+      <td>${renderPathCell(first, path[0], groupsByLetter)}</td>
+      <td>${renderPathCell(second, path[1], groupsByLetter)}</td>
+      <td>${renderPathCell(third, path[2], groupsByLetter)}</td>
     </tr>`;
   }).join("");
   $("knockoutPathPanel").innerHTML = `<div class="path-table-wrap">
