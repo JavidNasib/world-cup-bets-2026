@@ -884,6 +884,10 @@ textarea {
   font-size: 0.86rem;
 }
 
+.group-recent-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .group-recent-row:last-child,
 .group-h2h-row:last-child {
   border-bottom: 0;

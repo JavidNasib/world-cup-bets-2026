@@ -2053,12 +2053,16 @@ function shortGameName(game) {
 }
 
 function renderGroupRecentScores(group) {
+  const games = groupStageGames()
+    .filter((game) => completedGame(game) && group.teams.includes(game.team1) && group.teams.includes(game.team2))
+    .sort((a, b) => `${a.date}-${a.index}`.localeCompare(`${b.date}-${b.index}`));
+  if (!games.length) return `<div class="empty compact-empty">No completed group games yet.</div>`;
   return `<div class="group-recent-list">
-    ${group.teams.map((team) => {
-      const scores = teamRecentScores(team, group);
+    ${games.map((game) => {
+      const score = `${game.score1}-${game.score2}`;
       return `<div class="group-recent-row">
-        <strong>${escapeHtml(team)}</strong>
-        <span>${scores.length ? scores.map((item) => `${escapeHtml(item.label)}: ${escapeHtml(item.score)}`).join(" | ") : "-"}</span>
+        <strong>${escapeHtml(shortGameName(game))}</strong>
+        <span>${escapeHtml(score)}</span>
       </div>`;
     }).join("")}
   </div>`;
