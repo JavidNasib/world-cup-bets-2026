@@ -2269,7 +2269,8 @@ function renderPlayerStats() {
     summary.innerHTML = [
       renderStatMetric("Players", rows.length),
       renderStatMetric("Total picks", totalPicks),
-      renderStatMetric("Correct / Wrong", `${totalCorrect} / ${totalWrong}`),
+      renderStatMetric("Correct picks", totalCorrect),
+      renderStatMetric("Wrong picks", totalWrong),
       renderStatMetric("Accuracy", totalCorrect + totalWrong ? `${Math.round((totalCorrect / (totalCorrect + totalWrong)) * 100)}%` : "0%"),
       renderStatMetric("Bonus points", totalBonus)
     ].join("");
@@ -2296,7 +2297,8 @@ function renderPlayerStats() {
     renderStatMetric("Total points", row.points),
     renderStatMetric("Days played", row.days),
     renderStatMetric("Accuracy", `${row.accuracy}%`),
-    renderStatMetric("Correct / Wrong", `${row.correct} / ${row.wrong}`),
+    renderStatMetric("Correct picks", row.correct),
+    renderStatMetric("Wrong picks", row.wrong),
     renderStatMetric("Pending picks", row.pending),
     renderStatMetric("Best day", row.bestDay ? `${prettyDate(row.bestDay.date)} - ${row.bestDay.points} pts` : "-"),
     renderStatMetric("Worst day", row.worstDay ? `${prettyDate(row.worstDay.date)} - ${row.worstDay.points} pts` : "-"),
@@ -2308,7 +2310,7 @@ function renderPlayerStats() {
   ].join("");
   const typeRows = Object.entries(row.typeStats).map(([kind, value]) => `<div class="stat-break-row">
     <strong>${PICK_TYPE_LABELS[kind]}</strong>
-    <span>${value.correct}/${value.total} correct</span>
+    <span>${value.correct} correct</span>
     <span>${value.wrong} wrong</span>
     <span>${value.pending} pending</span>
     <span>${value.points} pts</span>

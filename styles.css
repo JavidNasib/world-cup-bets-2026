@@ -1392,15 +1392,24 @@ textarea {
     padding-right: 42px;
   }
 
+  #statsPanel .section-head {
+    display: grid;
+    align-items: stretch;
+  }
+
   .stats-controls {
     width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
     justify-content: stretch;
   }
 
   .stats-controls select,
   .compact-button {
-    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
     max-width: none;
+    box-sizing: border-box;
   }
 
   .recent-score-grid {
