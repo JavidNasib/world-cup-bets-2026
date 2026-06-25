@@ -416,6 +416,10 @@ function getActiveDate() {
   return $("dateSelect").value || nearestPlayableDate();
 }
 
+function closePathPanel() {
+  $("knockoutPathPanel")?.classList.add("hidden");
+}
+
 function activateTab(tabName, remember = true) {
   const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
   const panel = $(`${tabName}Panel`);
@@ -423,6 +427,7 @@ function activateTab(tabName, remember = true) {
   document.querySelectorAll(".tab, .panel").forEach((item) => item.classList.remove("active"));
   tab.classList.add("active");
   panel.classList.add("active");
+  if (tabName === "stats") closePathPanel();
   if (remember) localStorage.setItem(ACTIVE_TAB_KEY, tabName);
 }
 
@@ -1093,7 +1098,10 @@ function bindEvents() {
     renderBetPanel();
   });
 
-  $("statsDateSelect")?.addEventListener("change", renderStats);
+  $("statsDateSelect")?.addEventListener("change", () => {
+    closePathPanel();
+    renderStats();
+  });
   $("pathToggleButton")?.addEventListener("click", () => {
     $("knockoutPathPanel")?.classList.toggle("hidden");
   });
@@ -2430,7 +2438,10 @@ function bindEvents() {
     renderBetPanel();
   });
 
-  $("statsDateSelect")?.addEventListener("change", renderStats);
+  $("statsDateSelect")?.addEventListener("change", () => {
+    closePathPanel();
+    renderStats();
+  });
   $("pathToggleButton")?.addEventListener("click", () => {
     $("knockoutPathPanel")?.classList.toggle("hidden");
   });
