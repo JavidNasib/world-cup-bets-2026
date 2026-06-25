@@ -154,7 +154,7 @@ function seedGames() {
           id: "401874117",
           date,
           index: 3,
-          team1: "Bolivia",
+          team1: "Jordan",
           team2: "Algeria",
           time: "2026-06-11T00:00:00Z",
           venue: "Rock Chalk Park",
@@ -2041,11 +2041,11 @@ function renderStats() {
       return;
     }
     const { teamToGroup } = inferGroups();
-    list.innerHTML = games.map((game, index) => {
+    list.innerHTML = games.map((game) => {
       const group = groupForGame(game, teamToGroup);
       const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
       const timeLabel = game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD";
-      return `<details class="stats-card" ${index === 0 ? "open" : ""}>
+      return `<details class="stats-card">
         <summary>
           <span>
             <strong>G${game.index} ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
