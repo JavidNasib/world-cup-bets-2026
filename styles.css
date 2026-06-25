@@ -588,15 +588,54 @@ textarea {
 .stats-card {
   padding: 0;
   overflow: hidden;
+  margin-bottom: 10px;
+  border-color: rgba(0, 104, 84, 0.22);
+  box-shadow: 0 6px 16px rgba(17, 34, 28, 0.05);
+}
+
+.stats-card[open] {
+  border-color: rgba(0, 104, 84, 0.45);
+  box-shadow: 0 10px 24px rgba(17, 34, 28, 0.1);
 }
 
 .stats-card summary {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px;
+  padding: 12px 42px 12px 12px;
+  position: relative;
+  background: #f8fbf7;
   cursor: pointer;
   list-style: none;
+}
+
+.stats-card[open] summary {
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-card summary::after {
+  content: "+";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.stats-card[open] summary::after {
+  content: "-";
+  background: var(--accent);
+  color: #fff;
 }
 
 .stats-card summary::-webkit-details-marker {
@@ -623,7 +662,8 @@ textarea {
 .stats-card-body {
   display: grid;
   gap: 12px;
-  padding: 0 12px 12px;
+  padding: 12px;
+  background: #fff;
 }
 
 .stats-card-body h3 {
@@ -1161,6 +1201,7 @@ textarea {
 
   .stats-card summary {
     display: grid;
+    padding-right: 42px;
   }
 
   .recent-score-grid {
