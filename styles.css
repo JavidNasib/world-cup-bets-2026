@@ -870,6 +870,57 @@ textarea {
   font-weight: 950;
 }
 
+.path-current-detail {
+  margin-top: 5px;
+}
+
+.path-current-detail summary {
+  align-items: center;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 950;
+  gap: 6px;
+  list-style: none;
+}
+
+.path-current-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.path-current-detail summary::after {
+  align-items: center;
+  background: var(--soft);
+  border-radius: 6px;
+  content: "+";
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.path-current-detail[open] summary::after {
+  content: "-";
+}
+
+.path-current-detail summary span {
+  color: var(--accent);
+  display: inline;
+  font-size: inherit;
+  font-weight: inherit;
+  margin-top: 0;
+}
+
+.path-current-detail small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-top: 5px;
+}
+
 .path-table tr:last-child td {
   border-bottom: 0;
 }
@@ -886,6 +937,11 @@ textarea {
 
 .group-recent-row {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.group-recent-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }
 
 .group-recent-row:last-child,
@@ -1444,6 +1500,10 @@ textarea {
   .group-recent-row,
   .group-h2h-row {
     grid-template-columns: 1fr;
+  }
+
+  .group-recent-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .admin-match-row,

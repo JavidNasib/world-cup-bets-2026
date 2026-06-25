@@ -2113,26 +2113,50 @@ function pathGroupLetters(pathText) {
   return [...new Set(cleaned.match(/\b[A-L]\b/g) || [])];
 }
 
-function pathCurrentTeams(pathText, groupsByLetter) {
+function pathCandidateRows(pathText, groupsByLetter) {
   const place = pathPlaceNumber(pathText);
   const letters = pathGroupLetters(pathText);
-  if (!place || !letters.length) return "TBD";
-  const teams = letters
+  if (!place || !letters.length) return [];
+  return letters
     .map((letter) => {
       const row = groupTable(groupsByLetter[letter] || { teams: [] })[place - 1];
-      if (!row) return "";
-      const prefix = letters.length > 1 ? `${letter}: ` : "";
-      const gd = `${row.gd > 0 ? "+" : ""}${row.gd}`;
-      return `${prefix}${row.team}, ${row.pts} pts, GD ${gd}`;
+      return row ? { letter, row } : null;
     })
     .filter(Boolean);
-  return teams.length ? teams.join(" / ") : "TBD";
+}
+
+function formatPathCandidate(candidate, includeLetter = false) {
+  const gd = `${candidate.row.gd > 0 ? "+" : ""}${candidate.row.gd}`;
+  const prefix = includeLetter ? `${candidate.letter}: ` : "";
+  return `${prefix}${candidate.row.team}, ${candidate.row.pts} pts, GD ${gd}`;
+}
+
+function pathBestCandidate(candidates) {
+  return [...candidates].sort((a, b) =>
+    b.row.pts - a.row.pts ||
+    b.row.gd - a.row.gd ||
+    b.row.gf - a.row.gf ||
+    a.row.team.localeCompare(b.row.team)
+  )[0];
+}
+
+function renderPathCurrent(pathText, groupsByLetter) {
+  const candidates = pathCandidateRows(pathText, groupsByLetter);
+  if (!candidates.length) return `<em>Right now: TBD</em>`;
+  const best = pathBestCandidate(candidates);
+  const bestText = formatPathCandidate(best);
+  if (candidates.length === 1) return `<em>Right now: ${escapeHtml(bestText)}</em>`;
+  const detailsText = candidates.map((candidate) => formatPathCandidate(candidate, true)).join(" / ");
+  return `<details class="path-current-detail">
+    <summary><span>Right now: ${escapeHtml(bestText)}</span></summary>
+    <small>${escapeHtml(detailsText)}</small>
+  </details>`;
 }
 
 function renderPathCell(team, pathText, groupsByLetter) {
   return `<strong>${escapeHtml(team)}</strong>
     <span>${escapeHtml(pathText)}</span>
-    <em>Right now: ${escapeHtml(pathCurrentTeams(pathText, groupsByLetter))}</em>`;
+    ${renderPathCurrent(pathText, groupsByLetter)}`;
 }
 
 function renderPathTableOverview(groups) {
