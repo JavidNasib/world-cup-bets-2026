@@ -695,6 +695,32 @@ textarea {
   font-weight: 800;
 }
 
+.group-path-grid {
+  display: grid;
+  grid-template-columns: 68px minmax(150px, 1fr) minmax(130px, 1fr) minmax(190px, 1.2fr);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.86rem;
+}
+
+.group-path-grid > * {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.group-path-grid > :nth-child(-n + 4) {
+  color: var(--accent);
+  background: var(--soft);
+  font-weight: 950;
+}
+
+.group-path-grid > :nth-last-child(-n + 4) {
+  border-bottom: 0;
+}
+
 .game-meta {
   display: flex;
   align-items: center;

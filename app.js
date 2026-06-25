@@ -59,7 +59,22 @@ const SPECIAL_GAME_LOCK_OVERRIDES = new Set(["760421"]);
 const SPECIAL_GAME_INDEX_OVERRIDES = { 760421: 4 };
 const CHEAT_WARNING = "Fuck you Rafiz, did you think I dont know?";
 const H2H_NOTES = {
+  "Brazil|Scotland": "World Cup meetings: 1974 draw 0-0; 1982 Brazil won 4-1; 1990 Brazil won 1-0; 1998 Brazil won 2-1.",
   "Canada|Switzerland": "Previous meeting: Switzerland vs Canada, 2002 friendly - Canada won 3-1."
+};
+const GROUP_PATHS = {
+  A: ["3rd from C/E/F/H/I", "2nd Group B", "1st Group E or G"],
+  B: ["3rd from E/F/G/I/J", "2nd Group A", "1st Group D or E"],
+  C: ["2nd Group F", "1st Group F", "1st Group A/E/I"],
+  D: ["3rd from B/E/F/I/J", "2nd Group G", "1st Group E/I/K"],
+  E: ["3rd from A/B/C/D/F", "2nd Group I", "1st Group A/B/D/G/K/L"],
+  F: ["2nd Group C", "1st Group C", "1st Group A/B/D/E/I"],
+  G: ["3rd from A/E/H/I/J", "2nd Group D", "1st Group B/I"],
+  H: ["2nd Group J", "1st Group J", "1st Group A/G/I/L"],
+  I: ["3rd from C/D/F/G/H", "2nd Group E", "1st Group A/B/D/G/K/L"],
+  J: ["2nd Group H", "1st Group H", "1st Group B/D/G/K/L"],
+  K: ["3rd from D/E/I/J/L", "2nd Group L", "1st Group L"],
+  L: ["3rd from E/H/I/J/K", "2nd Group K", "1st Group K"]
 };
 const $ = (id) => document.getElementById(id);
 const PLACEHOLDER_PLAYER_RE = /^Player [1-7]$/;
@@ -1990,6 +2005,23 @@ function renderRecentScores(game, group) {
   </div>`;
 }
 
+function renderGroupPath(group) {
+  const letter = group.name.replace("Group ", "");
+  const path = GROUP_PATHS[letter];
+  if (!path) return "";
+  return `<h3>${escapeHtml(group.name)} knockout path</h3>
+    <div class="group-path-grid">
+      <div>Group</div>
+      <div>1st place plays</div>
+      <div>2nd place plays</div>
+      <div>3rd place, if qualifies, can play</div>
+      <strong>${escapeHtml(letter)}</strong>
+      <span>${escapeHtml(path[0])}</span>
+      <span>${escapeHtml(path[1])}</span>
+      <span>${escapeHtml(path[2])}</span>
+    </div>`;
+}
+
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2020,6 +2052,7 @@ function renderStats() {
           ${renderRecentScores(game, group)}
           <h3>H2H Previous meeting</h3>
           <p class="h2h-note">${escapeHtml(h2h)}</p>
+          ${renderGroupPath(group)}
         </div>
       </details>`;
     }).join("");
