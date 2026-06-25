@@ -2052,15 +2052,28 @@ function shortGameName(game) {
   return `${game.team1} vs ${game.team2}`;
 }
 
-function renderMatchStats(game, group) {
-  const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
-  return `<section class="match-stat-block">
-    <h3>G${game.index} ${escapeHtml(shortGameName(game))}</h3>
-    <h4>Recent World Cup scores</h4>
-    ${renderRecentScores(game, group)}
-    <h4>H2H Previous meeting</h4>
-    <p class="h2h-note">${escapeHtml(h2h)}</p>
-  </section>`;
+function renderGroupRecentScores(group) {
+  return `<div class="group-recent-list">
+    ${group.teams.map((team) => {
+      const scores = teamRecentScores(team, group);
+      return `<div class="group-recent-row">
+        <strong>${escapeHtml(team)}</strong>
+        <span>${scores.length ? scores.map((item) => `${escapeHtml(item.label)}: ${escapeHtml(item.score)}`).join(" | ") : "-"}</span>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderGroupH2H(games) {
+  return `<div class="group-h2h-list">
+    ${games.map((game) => {
+      const h2h = H2H_NOTES[h2hKey(game.team1, game.team2)] || "No previous meeting saved yet.";
+      return `<div class="group-h2h-row">
+        <strong>${escapeHtml(shortGameName(game))}</strong>
+        <span>${escapeHtml(h2h)}</span>
+      </div>`;
+    }).join("")}
+  </div>`;
 }
 
 function renderKnockoutPathOverview(groups) {
@@ -2081,6 +2094,30 @@ function renderKnockoutPathOverview(groups) {
   $("knockoutPathPanel").innerHTML = `<div class="path-grid">${rows}</div>`;
 }
 
+function renderPathTableOverview(groups) {
+  if (!$("knockoutPathPanel")) return;
+  const rows = groups.map((group) => {
+    const letter = group.name.replace("Group ", "");
+    const path = GROUP_PATHS[letter] || ["-", "-", "-"];
+    const table = groupTable(group);
+    const first = table[0]?.team || "TBD";
+    const second = table[1]?.team || "TBD";
+    const third = table[2]?.team || "TBD";
+    return `<tr>
+      <td>${escapeHtml(group.name)}</td>
+      <td><strong>${escapeHtml(first)}</strong><span>${escapeHtml(path[0])}</span></td>
+      <td><strong>${escapeHtml(second)}</strong><span>${escapeHtml(path[1])}</span></td>
+      <td><strong>${escapeHtml(third)}</strong><span>${escapeHtml(path[2])}</span></td>
+    </tr>`;
+  }).join("");
+  $("knockoutPathPanel").innerHTML = `<div class="path-table-wrap">
+    <table class="path-table">
+      <thead><tr><th>Group</th><th>1st place can play</th><th>2nd place can play</th><th>3rd place, if qualifies</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2092,15 +2129,14 @@ function renderStats() {
       return;
     }
     const { groups, teamToGroup } = inferGroups();
-    renderKnockoutPathOverview(groups);
+    renderPathTableOverview(groups);
     list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
       const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
       const gameLabel = games.map(shortGameName).join(" & ");
-      const gameIndexes = games.map((game) => `G${game.index}`).join("/");
       return `<details class="stats-card">
         <summary>
           <span>
-            <strong>${escapeHtml(gameIndexes)} ${escapeHtml(gameLabel)}</strong>
+            <strong>${escapeHtml(group.name)}: ${escapeHtml(gameLabel)}</strong>
             <em>${escapeHtml(group.name)} - ${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
           </span>
           <span>${timeLabel}</span>
@@ -2108,7 +2144,10 @@ function renderStats() {
         <div class="stats-card-body">
           <h3>${escapeHtml(group.name)} current table</h3>
           ${renderGroupTable(group)}
-          ${games.map((game) => renderMatchStats(game, group)).join("")}
+          <h3>Recent World Cup scores</h3>
+          ${renderGroupRecentScores(group)}
+          <h3>H2H Previous meeting</h3>
+          ${renderGroupH2H(games)}
           ${renderGroupPath(group)}
         </div>
       </details>`;
@@ -2231,6 +2270,7 @@ function renderPlayerStats() {
       renderStatMetric("Players", rows.length),
       renderStatMetric("Total picks", totalPicks),
       renderStatMetric("Correct / Wrong", `${totalCorrect} / ${totalWrong}`),
+      renderStatMetric("Accuracy", totalCorrect + totalWrong ? `${Math.round((totalCorrect / (totalCorrect + totalWrong)) * 100)}%` : "0%"),
       renderStatMetric("Bonus points", totalBonus)
     ].join("");
     list.innerHTML = `<div class="standings-table">
@@ -2254,11 +2294,15 @@ function renderPlayerStats() {
   }
   summary.innerHTML = [
     renderStatMetric("Total points", row.points),
+    renderStatMetric("Days played", row.days),
     renderStatMetric("Accuracy", `${row.accuracy}%`),
     renderStatMetric("Correct / Wrong", `${row.correct} / ${row.wrong}`),
-    renderStatMetric("Best day", row.bestDay ? `${prettyDate(row.bestDay.date)} · ${row.bestDay.points} pts` : "-"),
-    renderStatMetric("Worst day", row.worstDay ? `${prettyDate(row.worstDay.date)} · ${row.worstDay.points} pts` : "-"),
+    renderStatMetric("Pending picks", row.pending),
+    renderStatMetric("Best day", row.bestDay ? `${prettyDate(row.bestDay.date)} - ${row.bestDay.points} pts` : "-"),
+    renderStatMetric("Worst day", row.worstDay ? `${prettyDate(row.worstDay.date)} - ${row.worstDay.points} pts` : "-"),
     renderStatMetric("Bonus points", row.bonusPoints),
+    renderStatMetric("Solo bonuses", row.soloBonuses),
+    renderStatMetric("Perfect days", row.perfectBonuses),
     renderStatMetric("Entry paid", money(row.entries)),
     renderStatMetric("Net", `<span class="${row.net >= 0 ? "positive" : "negative"}">${money(row.net)}</span>`)
   ].join("");
@@ -2319,6 +2363,10 @@ function bindEvents() {
   });
 
   $("statsDateSelect")?.addEventListener("change", renderStats);
+  $("pathToggleButton")?.addEventListener("click", () => {
+    $("knockoutPathPanel")?.classList.toggle("hidden");
+  });
+  $("playerStatsSelect")?.addEventListener("change", renderPlayerStats);
 
   $("playerName")?.addEventListener("input", renderBetPanel);
 
