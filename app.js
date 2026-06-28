@@ -48,6 +48,8 @@ const RESULT_OPTIONS = ["1", "X", "2"];
 const DOUBLE_OPTIONS = ["1X", "X2", "12"];
 const GOAL_OPTIONS = ["O2", "U2"];
 const BOTH_OPTIONS = ["GG", "NG"];
+const HALF_RESULT_OPTIONS = ["H1", "HX", "H2"];
+const HALF_GOAL_OPTIONS = ["HO1.5", "HU1.5"];
 const MIN_PLAYERS = 1;
 const ABSOLUTE_MAX_PLAYERS = 7;
 const BET_LOCK_MINUTES_BEFORE_FIRST_GAME = 15;
@@ -83,6 +85,9 @@ const DEFAULT_POINT_VALUES = {
   goals: 3,
   both: 2,
   double: 1,
+  halfResult: 4,
+  halfGoals: 3,
+  exactScore: 10,
   challenge2: 6,
   challenge3: 8,
   perfectDayBonus: 4,
@@ -112,7 +117,8 @@ let state = {
     pointValues: DEFAULT_POINT_VALUES,
     gameBetting: {},
     favoriteChallenges: {},
-    lateUnlocks: {}
+    lateUnlocks: {},
+    halfTimes: {}
   },
   games: seedGames(),
   bets: {}
@@ -336,11 +342,25 @@ function challengeInfo(pick) {
   return match ? { side: match[1], margin: Number(match[2]) } : null;
 }
 
+function exactScoreInfo(pick) {
+  const match = String(pick || "").match(/^ES:([0-9])-([0-9])$/);
+  return match ? { score1: Number(match[1]), score2: Number(match[2]) } : null;
+}
+
+function isCompletePick(pick) {
+  if (!pick) return false;
+  if (String(pick).startsWith("ES:")) return Boolean(exactScoreInfo(pick));
+  return Boolean(pickKind(pick));
+}
+
 function pickKind(value) {
   if (RESULT_OPTIONS.includes(value)) return "result";
   if (DOUBLE_OPTIONS.includes(value)) return "double";
   if (GOAL_OPTIONS.includes(value)) return "goals";
   if (BOTH_OPTIONS.includes(value)) return "both";
+  if (HALF_RESULT_OPTIONS.includes(value)) return "halfResult";
+  if (HALF_GOAL_OPTIONS.includes(value)) return "halfGoals";
+  if (String(value || "").startsWith("ES:")) return "exactScore";
   if (challengeInfo(value)) return "challenge";
   return "";
 }
@@ -350,6 +370,8 @@ function allowedOptions(kind) {
   if (kind === "double") return DOUBLE_OPTIONS;
   if (kind === "goals") return GOAL_OPTIONS;
   if (kind === "both") return BOTH_OPTIONS;
+  if (kind === "halfResult") return HALF_RESULT_OPTIONS;
+  if (kind === "halfGoals") return HALF_GOAL_OPTIONS;
   return [];
 }
 
@@ -370,6 +392,13 @@ function favoriteChallengeOptions(game) {
 
 function pickLabel(pick, game) {
   const challenge = challengeInfo(pick);
+  const exact = exactScoreInfo(pick);
+  if (exact) return `${exact.score1}-${exact.score2}`;
+  if (pick === "H1") return "1";
+  if (pick === "HX") return "X";
+  if (pick === "H2") return "2";
+  if (pick === "HO1.5") return "O1.5";
+  if (pick === "HU1.5") return "U1.5";
   if (!challenge) return pick || "-";
   const team = challenge.side === "1" ? game?.team1 : game?.team2;
   return `${team || `Team ${challenge.side}`} by ${challenge.margin}+`;
@@ -378,6 +407,7 @@ function pickLabel(pick, game) {
 function pickPoints(pick) {
   const kind = pickKind(pick);
   const challenge = challengeInfo(pick);
+  if (kind === "exactScore" && !exactScoreInfo(pick)) return 0;
   if (challenge) return Number(pointValues()[`challenge${challenge.margin}`]) || 0;
   return kind ? Number(pointValues()[kind]) || 0 : 0;
 }
@@ -572,6 +602,7 @@ async function loadFromSupabase() {
 }
 
 function normalizeDbGame(row) {
+  const half = state.settings.halfTimes?.[row.id] || {};
   return {
     id: row.id,
     date: row.match_date,
@@ -582,6 +613,8 @@ function normalizeDbGame(row) {
     venue: row.venue || "",
     score1: row.score1,
     score2: row.score2,
+    htScore1: half.score1 ?? null,
+    htScore2: half.score2 ?? null,
     completed: Boolean(row.completed),
     source: row.source || "manual"
   };
@@ -693,8 +726,17 @@ async function syncFixtures(silent = false) {
         ? data.events.filter((event) => event.id !== "401875463")
         : data.events;
       const ownDateGames = [];
-      events.forEach((event, idx) => {
+      for (const [idx, event] of events.entries()) {
         const synced = fromEspnEvent(event, date, idx + 1);
+        if (synced.completed) {
+          const half = state.settings.halfTimes?.[synced.id] || await fetchEspnHalfTimeScore(base, synced.id, synced.team1, synced.team2);
+          if (half) {
+            synced.htScore1 = half.score1;
+            synced.htScore2 = half.score2;
+            state.settings.halfTimes ||= {};
+            state.settings.halfTimes[synced.id] = half;
+          }
+        }
         const targetDate = bettingDateForGame(synced, date);
         const targetGames = state.games[targetDate] || [];
         const existing = targetGames.find((game) => game.id === synced.id)
@@ -712,7 +754,7 @@ async function syncFixtures(silent = false) {
             merged
           ]);
         }
-      });
+      }
       state.games[date] = cleanGamesForDate(date, ownDateGames);
       updated += 1;
     } catch {
@@ -733,9 +775,36 @@ function mergeSyncedGame(existing, synced) {
     ...synced,
     team1: team1Missing ? existing.team1 : synced.team1,
     team2: team2Missing ? existing.team2 : synced.team2,
+    htScore1: synced.htScore1 ?? existing.htScore1 ?? null,
+    htScore2: synced.htScore2 ?? existing.htScore2 ?? null,
     venue: synced.venue || existing.venue,
     time: synced.time || existing.time
   };
+}
+
+async function fetchEspnHalfTimeScore(base, eventId, team1, team2) {
+  try {
+    const response = await fetch(`${base.replace("scoreboard", "summary")}?event=${eventId}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const events = Array.isArray(data.keyEvents) ? data.keyEvents : [];
+    const score = { score1: 0, score2: 0 };
+    events
+      .filter((event) => event.scoringPlay && Number(event.period?.number) === 1 && !event.shootout)
+      .forEach((event) => {
+        const scorer = String(event.team?.displayName || "");
+        if (sameTeamName(scorer, team1)) score.score1 += 1;
+        else if (sameTeamName(scorer, team2)) score.score2 += 1;
+      });
+    return score;
+  } catch {
+    return null;
+  }
+}
+
+function sameTeamName(left, right) {
+  const clean = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return clean(left) === clean(right);
 }
 
 function fromEspnEvent(event, date, index) {
@@ -753,6 +822,8 @@ function fromEspnEvent(event, date, index) {
     venue: competition.venue?.fullName || event.venue?.displayName || "",
     score1: Number.isFinite(Number(home.score)) ? Number(home.score) : null,
     score2: Number.isFinite(Number(away.score)) ? Number(away.score) : null,
+    htScore1: state.settings.halfTimes?.[event.id]?.score1 ?? null,
+    htScore2: state.settings.halfTimes?.[event.id]?.score2 ?? null,
     completed: Boolean(event.status?.type?.completed || competition.status?.type?.completed),
     source: "espn"
   };
@@ -1290,7 +1361,7 @@ function showToast(message) {
 }
 
 function selectedPickCount(picks = selections) {
-  return Object.values(picks || {}).filter(Boolean).length;
+  return Object.values(picks || {}).filter(isCompletePick).length;
 }
 
 function completedGame(game) {
@@ -1387,6 +1458,9 @@ function renderBetPanel() {
     `<span class="rule-pill">1 pick per selected game</span>`,
     `<span class="rule-pill">Result ${values.result} pts</span>`,
     `<span class="rule-pill">Goals ${values.goals} pts</span>`,
+    `<span class="rule-pill">1st half result ${values.halfResult} pts</span>`,
+    `<span class="rule-pill">1st half O/U1.5 ${values.halfGoals} pts</span>`,
+    `<span class="rule-pill">Exact score ${values.exactScore} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
     `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3} pts</span>`,
@@ -1408,18 +1482,38 @@ function renderGameCard(game, playerName = "") {
   const kind = pickKind(selected);
   const locked = isGameLockedForPlayer(game, playerName);
   const challenge = favoriteChallenge(game);
-  const typeKeys = challenge ? ["result", "goals", "both", "double", "challenge"] : ["result", "goals", "both", "double"];
+  const typeKeys = challenge
+    ? ["result", "goals", "halfResult", "halfGoals", "exactScore", "both", "double", "challenge"]
+    : ["result", "goals", "halfResult", "halfGoals", "exactScore", "both", "double"];
   const typeButtons = typeKeys
     .map((key) => {
-      const label = key === "both" ? "GG/NG" : key === "challenge" ? "Favorite+" : key;
+      const label = key === "both"
+        ? "GG/NG"
+        : key === "challenge"
+          ? "Favorite+"
+          : key === "halfResult"
+            ? "1st half 1X2"
+            : key === "halfGoals"
+              ? "1st half O/U1.5"
+              : key === "exactScore"
+                ? "Exact score"
+                : key;
       return `<button class="pick-button ${key === kind ? "selected" : ""}" type="button" data-type="${key}" data-game="${game.id}" ${locked ? "disabled" : ""}>${label}</button>`;
     })
     .join("");
-  const optionButtons = kind
-    ? (kind === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(kind))
+  const exact = exactScoreInfo(selected);
+  const partialExact = String(selected || "").match(/^ES:([0-9]?)-([0-9]?)$/);
+  const optionButtons = kind === "exactScore"
+    ? `<div class="exact-score-pick" data-exact-game="${game.id}">
+        <input data-exact-side="1" data-game="${game.id}" type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" value="${escapeHtml(String(exact?.score1 ?? partialExact?.[1] ?? ""))}" placeholder="0" aria-label="${escapeHtml(game.team1)} exact score" ${locked ? "disabled" : ""} />
+        <span>-</span>
+        <input data-exact-side="2" data-game="${game.id}" type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" value="${escapeHtml(String(exact?.score2 ?? partialExact?.[2] ?? ""))}" placeholder="0" aria-label="${escapeHtml(game.team2)} exact score" ${locked ? "disabled" : ""} />
+      </div>`
+    : kind
+      ? (kind === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(kind))
         .map((option) => `<button class="pick-button ${option === selected ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`)
         .join("")
-    : `<span class="small">Choose pick type first</span>`;
+      : `<span class="small">Choose pick type first</span>`;
   const clearButton = selected && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
   const challengeBadge = challenge
     ? `<div class="challenge-badge">Favorite Challenge: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} has extra margin picks</div>`
@@ -1479,6 +1573,9 @@ function renderAdmin() {
   $("adminRules").innerHTML = [
     ["result", "Result 1/X/2"],
     ["goals", "Goals O2/U2"],
+    ["halfResult", "1st half 1/X/2"],
+    ["halfGoals", "1st half O1.5/U1.5"],
+    ["exactScore", "Exact full-time score"],
     ["both", "GG/NG"],
     ["double", "Double 1X/X2/12"],
     ["challenge2", "Favorite wins by 2+"],
@@ -1719,11 +1816,19 @@ function pickWins(pick, game) {
   if (!pick || !completedGame(game)) return false;
   const result = game.score1 > game.score2 ? "1" : game.score1 < game.score2 ? "2" : "X";
   const total = game.score1 + game.score2;
+  const halfComplete = game.htScore1 !== null && game.htScore1 !== undefined && game.htScore2 !== null && game.htScore2 !== undefined;
+  const halfResult = halfComplete ? (game.htScore1 > game.htScore2 ? "H1" : game.htScore1 < game.htScore2 ? "H2" : "HX") : "";
+  const halfTotal = halfComplete ? Number(game.htScore1) + Number(game.htScore2) : null;
+  const exact = exactScoreInfo(pick);
   const challenge = challengeInfo(pick);
   if (challenge) {
     const margin = challenge.side === "1" ? game.score1 - game.score2 : game.score2 - game.score1;
     return margin > challenge.margin;
   }
+  if (exact) return exact.score1 === Number(game.score1) && exact.score2 === Number(game.score2);
+  if (HALF_RESULT_OPTIONS.includes(pick)) return halfComplete && pick === halfResult;
+  if (pick === "HO1.5") return halfComplete && halfTotal > 1.5;
+  if (pick === "HU1.5") return halfComplete && halfTotal <= 1.5;
   if (RESULT_OPTIONS.includes(pick)) return pick === result;
   if (pick === "1X") return result === "1" || result === "X";
   if (pick === "X2") return result === "X" || result === "2";
@@ -2234,6 +2339,9 @@ function renderStats() {
 const PICK_TYPE_LABELS = {
   result: "1/X/2",
   goals: "O2/U2",
+  halfResult: "1st half 1/X/2",
+  halfGoals: "1st half O1.5/U1.5",
+  exactScore: "Exact score",
   both: "GG/NG",
   double: "Double",
   challenge: "Favorite+"
@@ -2416,6 +2524,8 @@ function validateSelections(date) {
   if (picks.length > games.length) return `This day has only ${games.length} games.`;
   const badPick = picks.find(([, pick]) => !pickKind(pick));
   if (badPick) return "One of the selected picks is not allowed.";
+  const incompleteExact = picks.find(([, pick]) => pickKind(pick) === "exactScore" && !exactScoreInfo(pick));
+  if (incompleteExact) return "Finish the exact score pick or clear that game.";
   const badChallenge = picks.find(([id, pick]) => pickKind(pick) === "challenge" && !favoriteChallengeOptions(games.find((game) => game.id === id)).includes(pick));
   if (badChallenge) return "One favorite challenge pick is not available for that game.";
   const playerName = $("playerName")?.value?.trim() || "";
@@ -2457,11 +2567,27 @@ function bindEvents() {
       delete selections[gameId];
     } else if (button.dataset.type) {
       const game = (state.games[getActiveDate()] || []).find((item) => item.id === gameId);
-      selections[gameId] = (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
+      selections[gameId] = button.dataset.type === "exactScore"
+        ? "ES:-"
+        : (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
     } else if (button.dataset.pick) {
       selections[gameId] = button.dataset.pick;
     }
     renderBetPanel();
+  });
+
+  $("gamesList").addEventListener("input", (event) => {
+    const input = event.target.closest("[data-exact-side]");
+    if (!input) return;
+    input.value = input.value.replace(/\D/g, "").slice(0, 1);
+    const gameId = input.dataset.game;
+    const wrap = input.closest("[data-exact-game]");
+    const score1 = wrap?.querySelector('[data-exact-side="1"]')?.value || "";
+    const score2 = wrap?.querySelector('[data-exact-side="2"]')?.value || "";
+    selections[gameId] = `ES:${score1}-${score2}`;
+    const selectedCount = selectedPickCount();
+    const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
+    $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
   });
 
   $("betForm").addEventListener("submit", async (event) => {
@@ -2475,7 +2601,7 @@ function bindEvents() {
     const error = validateSelections(date);
     if (error) return showToast(error);
     const validIds = new Set((state.games[date] || []).map((game) => game.id));
-    const picks = Object.fromEntries(Object.entries(selections).filter(([id, pick]) => validIds.has(id) && pick));
+    const picks = Object.fromEntries(Object.entries(selections).filter(([id, pick]) => validIds.has(id) && isCompletePick(pick)));
     try {
       const savedName = await saveBet(date, playerName, playerPin, picks);
       rememberPlayerCredentials(savedName, playerPin);

@@ -1085,6 +1085,32 @@ textarea {
   cursor: not-allowed;
 }
 
+.exact-score-pick {
+  align-items: center;
+  display: inline-grid;
+  grid-template-columns: 48px auto 48px;
+  gap: 8px;
+  justify-content: start;
+}
+
+.exact-score-pick input {
+  height: 44px;
+  padding: 0;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.exact-score-pick input::placeholder {
+  color: #9aa6a0;
+  opacity: 0.45;
+}
+
+.exact-score-pick span {
+  color: var(--muted);
+  font-weight: 950;
+}
+
 .text-button {
   width: 100%;
   margin-top: 10px;
