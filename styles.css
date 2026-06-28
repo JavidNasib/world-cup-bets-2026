@@ -1326,6 +1326,42 @@ textarea {
   cursor: not-allowed;
 }
 
+.extra-time-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(179, 38, 58, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(179, 38, 58, 0.08), rgba(20, 107, 84, 0.08));
+}
+
+.extra-toggle {
+  min-height: 38px;
+  border: 1px solid rgba(179, 38, 58, 0.32);
+  border-radius: 8px;
+  background: #fff7fb;
+  color: #8a1236;
+  font-weight: 950;
+  text-align: left;
+  padding: 0 12px;
+}
+
+.extra-toggle.selected {
+  color: #fff;
+  background: linear-gradient(135deg, #b3263a, #146b54);
+}
+
+.extra-section-body {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.penalty-label {
+  margin-top: 8px;
+}
+
 .exact-score-pick {
   align-items: center;
   display: inline-grid;

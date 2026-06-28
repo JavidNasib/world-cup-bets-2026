@@ -50,6 +50,8 @@ const GOAL_OPTIONS = ["O2", "U2"];
 const BOTH_OPTIONS = ["GG", "NG"];
 const HALF_RESULT_OPTIONS = ["H1", "HX", "H2"];
 const HALF_GOAL_OPTIONS = ["HO1.5", "HU1.5"];
+const EXTRA_RESULT_OPTIONS = ["E1", "EX", "E2"];
+const PENALTY_OPTIONS = ["P1", "P2"];
 const MAX_PICKS_PER_GAME = 3;
 const MIN_PLAYERS = 1;
 const ABSOLUTE_MAX_PLAYERS = 7;
@@ -91,6 +93,8 @@ const DEFAULT_POINT_VALUES = {
   halfResult: 4,
   halfGoals: 3,
   exactScore: 10,
+  extraResult: 4,
+  penalty: 4,
   challenge2: 6,
   challenge3: 8,
   perfectDayBonus: 4,
@@ -127,6 +131,7 @@ let state = {
   bets: {}
 };
 let selections = {};
+let extraOpenGames = new Set();
 
 function seedGames() {
   const games = {};
@@ -366,6 +371,14 @@ function rawPicksForGame(picks, gameId) {
   return Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
 }
 
+function extraPickKind(kind) {
+  return kind === "extraResult" || kind === "penalty";
+}
+
+function normalPicksForGame(picks, gameId) {
+  return rawPicksForGame(picks, gameId).filter((pick) => !extraPickKind(pickKind(pick)));
+}
+
 function selectedGameIds(picks = selections) {
   return Object.keys(picks || {}).filter((gameId) => picksForGame(picks, gameId).length);
 }
@@ -385,6 +398,8 @@ function pickKind(value) {
   if (BOTH_OPTIONS.includes(value)) return "both";
   if (HALF_RESULT_OPTIONS.includes(value)) return "halfResult";
   if (HALF_GOAL_OPTIONS.includes(value)) return "halfGoals";
+  if (EXTRA_RESULT_OPTIONS.includes(value)) return "extraResult";
+  if (PENALTY_OPTIONS.includes(value)) return "penalty";
   if (String(value || "").startsWith("ES:")) return "exactScore";
   if (challengeInfo(value)) return "challenge";
   return "";
@@ -397,6 +412,8 @@ function allowedOptions(kind) {
   if (kind === "both") return BOTH_OPTIONS;
   if (kind === "halfResult") return HALF_RESULT_OPTIONS;
   if (kind === "halfGoals") return HALF_GOAL_OPTIONS;
+  if (kind === "extraResult") return EXTRA_RESULT_OPTIONS;
+  if (kind === "penalty") return PENALTY_OPTIONS;
   return [];
 }
 
@@ -424,6 +441,11 @@ function pickLabel(pick, game) {
   if (pick === "H2") return "2";
   if (pick === "HO1.5") return "O1.5";
   if (pick === "HU1.5") return "U1.5";
+  if (pick === "E1") return "1";
+  if (pick === "EX") return "X";
+  if (pick === "E2") return "2";
+  if (pick === "P1") return "1";
+  if (pick === "P2") return "2";
   if (!challenge) return pick || "-";
   const team = challenge.side === "1" ? game?.team1 : game?.team2;
   return `${team || `Team ${challenge.side}`} by ${challenge.margin}+`;
@@ -436,6 +458,11 @@ function historyPickLabel(pick, game) {
   if (pick === "H1") return "HT1";
   if (pick === "HX") return "HTX";
   if (pick === "H2") return "HT2";
+  if (pick === "E1") return "E1";
+  if (pick === "EX") return "EX";
+  if (pick === "E2") return "E2";
+  if (pick === "P1") return "P1";
+  if (pick === "P2") return "P2";
   return pickLabel(pick, game);
 }
 
@@ -638,6 +665,8 @@ async function loadFromSupabase() {
 
 function normalizeDbGame(row) {
   const half = state.settings.halfTimes?.[row.id] || {};
+  const extra = state.settings.extraTimes?.[row.id] || {};
+  const penaltyWinner = state.settings.penaltyWinners?.[row.id] || "";
   return {
     id: row.id,
     date: row.match_date,
@@ -650,6 +679,9 @@ function normalizeDbGame(row) {
     score2: row.score2,
     htScore1: half.score1 ?? null,
     htScore2: half.score2 ?? null,
+    etScore1: extra.score1 ?? null,
+    etScore2: extra.score2 ?? null,
+    penaltyWinner,
     completed: Boolean(row.completed),
     source: row.source || "manual"
   };
@@ -685,7 +717,7 @@ async function saveBet(date, playerName, pin, picks) {
   const games = state.games[date] || [];
   const gamesById = new Map(games.map((game) => [game.id, game]));
   const incomingPicks = Object.entries(picks || {})
-    .map(([id, value]) => [id, rawPicksForGame({ [id]: value }, id).filter(isCompletePick).slice(0, MAX_PICKS_PER_GAME)])
+    .map(([id, value]) => [id, rawPicksForGame({ [id]: value }, id).filter(isCompletePick)])
     .filter(([id, gamePicks]) => gamesById.has(id) && gamePicks.length);
   if (!incomingPicks.length) {
     throw new Error("Pick at least one open game.");
@@ -773,6 +805,14 @@ async function syncFixtures(silent = false) {
             state.settings.halfTimes ||= {};
             state.settings.halfTimes[synced.id] = half;
           }
+          if (synced.etScore1 !== null && synced.etScore2 !== null) {
+            state.settings.extraTimes ||= {};
+            state.settings.extraTimes[synced.id] = { score1: synced.etScore1, score2: synced.etScore2 };
+          }
+          if (synced.penaltyWinner) {
+            state.settings.penaltyWinners ||= {};
+            state.settings.penaltyWinners[synced.id] = synced.penaltyWinner;
+          }
         }
         const targetDate = bettingDateForGame(synced, date);
         const targetGames = state.games[targetDate] || [];
@@ -814,6 +854,9 @@ function mergeSyncedGame(existing, synced) {
     team2: team2Missing ? existing.team2 : synced.team2,
     htScore1: synced.htScore1 ?? existing.htScore1 ?? null,
     htScore2: synced.htScore2 ?? existing.htScore2 ?? null,
+    etScore1: synced.etScore1 ?? existing.etScore1 ?? null,
+    etScore2: synced.etScore2 ?? existing.etScore2 ?? null,
+    penaltyWinner: synced.penaltyWinner || existing.penaltyWinner || "",
     venue: synced.venue || existing.venue,
     time: synced.time || existing.time
   };
@@ -844,11 +887,35 @@ function sameTeamName(left, right) {
   return clean(left) === clean(right);
 }
 
+function lineScoreValue(competitor, period) {
+  const row = (competitor.linescores || []).find((item) => Number(item.period) === period);
+  const value = Number(row?.value ?? row?.score ?? row?.displayValue);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function extraTimeScore(home, away) {
+  const homeExtra = lineScoreValue(home, 3) + lineScoreValue(home, 4);
+  const awayExtra = lineScoreValue(away, 3) + lineScoreValue(away, 4);
+  if (!homeExtra && !awayExtra) return null;
+  return {
+    score1: Number(home.score) || 0,
+    score2: Number(away.score) || 0
+  };
+}
+
+function penaltyWinner(home, away) {
+  const homePens = Number(home.shootoutScore ?? home.penaltyScore ?? home.penalties);
+  const awayPens = Number(away.shootoutScore ?? away.penaltyScore ?? away.penalties);
+  if (!Number.isFinite(homePens) || !Number.isFinite(awayPens) || homePens === awayPens) return "";
+  return homePens > awayPens ? "1" : "2";
+}
+
 function fromEspnEvent(event, date, index) {
   const competition = event.competitions?.[0] || {};
   const competitors = competition.competitors || [];
   const home = competitors.find((item) => item.homeAway === "home") || competitors[0] || {};
   const away = competitors.find((item) => item.homeAway === "away") || competitors[1] || {};
+  const extra = extraTimeScore(home, away);
   return {
     id: event.id || `${date}-${index}`,
     date,
@@ -861,6 +928,9 @@ function fromEspnEvent(event, date, index) {
     score2: Number.isFinite(Number(away.score)) ? Number(away.score) : null,
     htScore1: state.settings.halfTimes?.[event.id]?.score1 ?? null,
     htScore2: state.settings.halfTimes?.[event.id]?.score2 ?? null,
+    etScore1: extra?.score1 ?? state.settings.extraTimes?.[event.id]?.score1 ?? null,
+    etScore2: extra?.score2 ?? state.settings.extraTimes?.[event.id]?.score2 ?? null,
+    penaltyWinner: penaltyWinner(home, away) || state.settings.penaltyWinners?.[event.id] || "",
     completed: Boolean(event.status?.type?.completed || competition.status?.type?.completed),
     source: "espn"
   };
@@ -1506,6 +1576,8 @@ function renderBetPanel() {
     `<span class="rule-pill">Exact score ${values.exactScore} pts</span>`,
     `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
     `<span class="rule-pill">Double ${values.double} pt</span>`,
+    `<span class="rule-pill">Extra time 1/X/2 ${values.extraResult} pts</span>`,
+    `<span class="rule-pill">Penalty winner ${values.penalty} pts</span>`,
     `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3} pts</span>`,
     `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
@@ -1524,7 +1596,8 @@ function renderGameCard(game, playerName = "") {
   const rawPicks = rawPicksForGame(selections, game.id);
   const completePicks = picksForGame(selections, game.id);
   const selectedKinds = new Set(rawPicks.map(pickKind).filter(Boolean));
-  const maxed = rawPicks.length >= MAX_PICKS_PER_GAME;
+  const normalPicks = normalPicksForGame(selections, game.id);
+  const maxed = normalPicks.length >= MAX_PICKS_PER_GAME;
   const locked = isGameLockedForPlayer(game, playerName);
   const challenge = favoriteChallenge(game);
   const typeKeys = challenge
@@ -1567,6 +1640,17 @@ function renderGameCard(game, playerName = "") {
           .join("");
       return `<div class="pick-section"><div class="pick-type"><span>${escapeHtml(label)}</span></div><div class="pick-grid">${body}</div></div>`;
     }).join("") || `<span class="small">Choose up to ${MAX_PICKS_PER_GAME} bet types for this game</span>`;
+  const extraPick = rawPicks.find((pick) => pickKind(pick) === "extraResult") || "";
+  const penaltyPick = rawPicks.find((pick) => pickKind(pick) === "penalty") || "";
+  const extraOpen = extraOpenGames.has(game.id) || Boolean(extraPick);
+  const extraOptions = extraOpen
+    ? `<div class="pick-section extra-section-body">
+        <div class="pick-type"><span>extra time result</span><span>4 pts</span></div>
+        <div class="pick-grid">${EXTRA_RESULT_OPTIONS.map((option) => `<button class="pick-button ${option === extraPick ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`).join("")}</div>
+        ${extraPick === "EX" ? `<div class="pick-type penalty-label"><span>penalty winner</span><span>+4 pts</span></div>
+        <div class="pick-grid">${PENALTY_OPTIONS.map((option) => `<button class="pick-button ${option === penaltyPick ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`).join("")}</div>` : ""}
+      </div>`
+    : "";
   const clearButton = rawPicks.length && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
   const challengeBadge = challenge
     ? `<div class="challenge-badge">Favorite Challenge: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} has extra margin picks</div>`
@@ -1579,9 +1663,13 @@ function renderGameCard(game, playerName = "") {
       <div class="team-row"><strong>${escapeHtml(game.team2)}</strong><span>2</span></div>
     </div>
     <div class="small">${escapeHtml(game.venue || "Venue TBD")}${completedGame(game) ? ` &middot; Final ${game.score1}-${game.score2}` : ""}</div>
-    <div class="pick-type"><span>Pick type</span><span>${rawPicks.length}/${MAX_PICKS_PER_GAME}</span></div>
+    <div class="pick-type"><span>Pick type</span><span>${normalPicks.length}/${MAX_PICKS_PER_GAME}</span></div>
     <div class="pick-grid">${typeButtons}</div>
     ${selectedSections}
+    <div class="extra-time-box">
+      <button class="extra-toggle ${extraOpen ? "selected" : ""}" type="button" data-extra-toggle="${game.id}" data-game="${game.id}" ${locked ? "disabled" : ""}>if extra time</button>
+      ${extraOptions}
+    </div>
     ${clearButton}
   </article>`;
 }
@@ -1630,6 +1718,8 @@ function renderAdmin() {
     ["exactScore", "Exact full-time score"],
     ["both", "GG/NG"],
     ["double", "Double 1X/X2/12"],
+    ["extraResult", "Extra time 1/X/2"],
+    ["penalty", "Penalty winner"],
     ["challenge2", "Favorite wins by 2+"],
     ["challenge3", "Favorite wins by 3+"],
     ["soloGameBonus", "Solo correct game bonus"],
@@ -1881,6 +1971,11 @@ function pickWins(pick, game) {
   if (HALF_RESULT_OPTIONS.includes(pick)) return halfComplete && pick === halfResult;
   if (pick === "HO1.5") return halfComplete && halfTotal > 1.5;
   if (pick === "HU1.5") return halfComplete && halfTotal <= 1.5;
+  const extraComplete = game.etScore1 !== null && game.etScore1 !== undefined && game.etScore2 !== null && game.etScore2 !== undefined;
+  const extraResult = extraComplete ? (Number(game.etScore1) > Number(game.etScore2) ? "E1" : Number(game.etScore1) < Number(game.etScore2) ? "E2" : "EX") : "";
+  if (EXTRA_RESULT_OPTIONS.includes(pick)) return extraComplete && pick === extraResult;
+  if (pick === "P1") return game.penaltyWinner === "1";
+  if (pick === "P2") return game.penaltyWinner === "2";
   if (RESULT_OPTIONS.includes(pick)) return pick === result;
   if (pick === "1X") return result === "1" || result === "X";
   if (pick === "X2") return result === "X" || result === "2";
@@ -2509,6 +2604,8 @@ const PICK_TYPE_LABELS = {
   exactScore: "Exact score",
   both: "GG/NG",
   double: "Double",
+  extraResult: "Extra time",
+  penalty: "Penalties",
   challenge: "Favorite+"
 };
 
@@ -2689,7 +2786,7 @@ function validateSelections(date) {
   const validIds = new Set(games.map((game) => game.id));
   const picks = Object.entries(selections).flatMap(([id]) => validIds.has(id) ? rawPicksForGame(selections, id).map((pick) => [id, pick]) : []);
   if (!picks.length) return "Pick at least one game.";
-  const tooMany = Object.keys(selections).find((id) => rawPicksForGame(selections, id).length > MAX_PICKS_PER_GAME);
+  const tooMany = Object.keys(selections).find((id) => normalPicksForGame(selections, id).length > MAX_PICKS_PER_GAME);
   if (tooMany) return `Choose max ${MAX_PICKS_PER_GAME} bet types for one game.`;
   const badPick = picks.find(([, pick]) => !pickKind(pick));
   if (badPick) return "One of the selected picks is not allowed.";
@@ -2697,6 +2794,11 @@ function validateSelections(date) {
   if (incompleteExact) return "Finish the exact score pick or clear that game.";
   const badChallenge = picks.find(([id, pick]) => pickKind(pick) === "challenge" && !favoriteChallengeOptions(games.find((game) => game.id === id)).includes(pick));
   if (badChallenge) return "One favorite challenge pick is not available for that game.";
+  const penaltyWithoutExtraDraw = Object.keys(selections).find((id) => {
+    const gamePicks = rawPicksForGame(selections, id);
+    return gamePicks.some((pick) => pickKind(pick) === "penalty") && !gamePicks.includes("EX");
+  });
+  if (penaltyWithoutExtraDraw) return "Penalty winner is available only after choosing extra time X.";
   const playerName = $("playerName")?.value?.trim() || "";
   const savedName = findPlayerName(playerName) || playerName;
   const existingPicks = getBetPicks(state.bets[date]?.[savedName]) || {};
@@ -2738,6 +2840,16 @@ function bindEvents() {
     const gameId = button.dataset.game || button.dataset.clear;
     if (button.dataset.clear) {
       delete selections[gameId];
+    } else if (button.dataset.extraToggle) {
+      const current = rawPicksForGame(selections, gameId);
+      const withoutExtra = current.filter((pick) => !extraPickKind(pickKind(pick)));
+      if (extraOpenGames.has(gameId) || withoutExtra.length !== current.length) {
+        extraOpenGames.delete(gameId);
+        if (withoutExtra.length) selections[gameId] = withoutExtra;
+        else delete selections[gameId];
+      } else {
+        extraOpenGames.add(gameId);
+      }
     } else if (button.dataset.type) {
       const game = (state.games[getActiveDate()] || []).find((item) => item.id === gameId);
       const current = rawPicksForGame(selections, gameId);
@@ -2749,7 +2861,7 @@ function bindEvents() {
         renderBetPanel();
         return;
       }
-      if (picksForGame(selections, gameId).length >= MAX_PICKS_PER_GAME) return;
+      if (normalPicksForGame(selections, gameId).length >= MAX_PICKS_PER_GAME) return;
       const nextPick = button.dataset.type === "exactScore"
         ? "ES:-"
         : (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
@@ -2760,7 +2872,10 @@ function bindEvents() {
       const existingIndex = current.findIndex((pick) => pickKind(pick) === nextKind);
       if (existingIndex >= 0) current[existingIndex] = button.dataset.pick;
       else current.push(button.dataset.pick);
-      selections[gameId] = current.slice(0, MAX_PICKS_PER_GAME);
+      const cleaned = nextKind === "extraResult" && button.dataset.pick !== "EX"
+        ? current.filter((pick) => pickKind(pick) !== "penalty")
+        : current;
+      selections[gameId] = cleaned;
     }
     renderBetPanel();
   });
@@ -2777,7 +2892,7 @@ function bindEvents() {
     const existingIndex = current.findIndex((pick) => pickKind(pick) === "exactScore");
     if (existingIndex >= 0) current[existingIndex] = `ES:${score1}-${score2}`;
     else current.push(`ES:${score1}-${score2}`);
-    selections[gameId] = current.slice(0, MAX_PICKS_PER_GAME);
+    selections[gameId] = current;
     const selectedCount = countedPickCount(getActiveDate());
     const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
     $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
