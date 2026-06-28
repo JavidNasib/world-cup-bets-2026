@@ -50,6 +50,7 @@ const GOAL_OPTIONS = ["O2", "U2"];
 const BOTH_OPTIONS = ["GG", "NG"];
 const HALF_RESULT_OPTIONS = ["H1", "HX", "H2"];
 const HALF_GOAL_OPTIONS = ["HO1.5", "HU1.5"];
+const MAX_PICKS_PER_GAME = 3;
 const MIN_PLAYERS = 1;
 const ABSOLUTE_MAX_PLAYERS = 7;
 const BET_LOCK_MINUTES_BEFORE_FIRST_GAME = 15;
@@ -353,6 +354,20 @@ function isCompletePick(pick) {
   return Boolean(pickKind(pick));
 }
 
+function picksForGame(picks, gameId) {
+  const value = picks?.[gameId];
+  return Array.isArray(value) ? value.filter(isCompletePick) : (isCompletePick(value) ? [value] : []);
+}
+
+function rawPicksForGame(picks, gameId) {
+  const value = picks?.[gameId];
+  return Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
+}
+
+function selectedGameIds(picks = selections) {
+  return Object.keys(picks || {}).filter((gameId) => picksForGame(picks, gameId).length);
+}
+
 function pickKind(value) {
   if (RESULT_OPTIONS.includes(value)) return "result";
   if (DOUBLE_OPTIONS.includes(value)) return "double";
@@ -425,7 +440,7 @@ function correctPlayersForGame(date, game) {
   return Object.entries(dayBets)
     .filter(([, bet]) => {
       const picks = getBetPicks(bet) || {};
-      return completedGame(game) && pickWins(picks[game.id], game);
+      return completedGame(game) && picksForGame(picks, game.id).some((pick) => pickWins(pick, game));
     })
     .map(([player]) => player);
 }
@@ -649,24 +664,26 @@ async function saveBet(date, playerName, pin, picks) {
   const pinHash = await hashPin(pin);
   const games = state.games[date] || [];
   const gamesById = new Map(games.map((game) => [game.id, game]));
-  const incomingPicks = Object.entries(picks || {}).filter(([id, pick]) => gamesById.has(id) && pick);
+  const incomingPicks = Object.entries(picks || {})
+    .map(([id, value]) => [id, rawPicksForGame({ [id]: value }, id).filter(isCompletePick).slice(0, MAX_PICKS_PER_GAME)])
+    .filter(([id, gamePicks]) => gamesById.has(id) && gamePicks.length);
   if (!incomingPicks.length) {
     throw new Error("Pick at least one open game.");
   }
-  for (const [id, pick] of incomingPicks) {
+  for (const [id, gamePicks] of incomingPicks) {
     const game = gamesById.get(id);
-    if (!pickKind(pick) || (pickKind(pick) === "challenge" && !favoriteChallengeOptions(game).includes(pick))) {
+    if (gamePicks.some((pick) => !pickKind(pick) || (pickKind(pick) === "challenge" && !favoriteChallengeOptions(game).includes(pick)))) {
       throw new Error("One selected pick is not allowed.");
     }
   }
-  for (const [id, pick] of incomingPicks) {
+  for (const [id, gamePicks] of incomingPicks) {
     const game = gamesById.get(id);
-    const existingPick = existing?.picks?.[id];
-    if (isGameLockedForPlayer(game, savedName) && existingPick !== pick) {
+    const existingPick = rawPicksForGame(existing?.picks || {}, id).join("|");
+    if (isGameLockedForPlayer(game, savedName) && existingPick !== gamePicks.join("|")) {
       throw new Error(CHEAT_WARNING);
     }
   }
-  if (!hasOpenBettableGame(date, savedName) && !incomingPicks.every(([id, pick]) => existing?.picks?.[id] === pick)) {
+  if (!hasOpenBettableGame(date, savedName) && !incomingPicks.every(([id, gamePicks]) => rawPicksForGame(existing?.picks || {}, id).join("|") === gamePicks.join("|"))) {
     throw new Error(CHEAT_WARNING);
   }
   if (existing?.pinHash && existing.pinHash !== pinHash) {
@@ -1361,7 +1378,7 @@ function showToast(message) {
 }
 
 function selectedPickCount(picks = selections) {
-  return Object.values(picks || {}).filter(isCompletePick).length;
+  return Object.keys(picks || {}).reduce((sum, gameId) => sum + picksForGame(picks, gameId).length, 0);
 }
 
 function completedGame(game) {
@@ -1427,16 +1444,18 @@ function dailyPlayerPoints(date, player) {
 function dailyPlayerPointBreakdown(date, player) {
   const games = state.games[date] || [];
   const picks = getBetPicks(state.bets[date]?.[player]) || {};
-  const selectedGames = games.filter((game) => picks[game.id]);
+  const selectedGames = games.filter((game) => picksForGame(picks, game.id).length);
   let soloBonusPoints = 0;
   const basePoints = games.reduce((sum, game) => {
-    const pick = picks[game.id];
-    if (!completedGame(game) || !pickWins(pick, game)) return sum;
+    const gamePicks = picksForGame(picks, game.id);
+    if (!completedGame(game) || !gamePicks.length) return sum;
+    const correctPicks = gamePicks.filter((pick) => pickWins(pick, game));
+    if (!correctPicks.length) return sum;
     const correctPlayers = correctPlayersForGame(date, game);
     if (correctPlayers.length === 1 && correctPlayers[0] === player) soloBonusPoints += soloGameBonus();
-    return sum + pickPoints(pick);
+    return sum + correctPicks.reduce((pickSum, pick) => pickSum + pickPoints(pick), 0);
   }, 0);
-  const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && pickWins(picks[game.id], game));
+  const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && picksForGame(picks, game.id).every((pick) => pickWins(pick, game)));
   const perfectBonusPoints = games.length > 1 && allSelectedCorrect ? perfectDayBonus() : 0;
   const bonusPoints = soloBonusPoints + perfectBonusPoints;
   return { base: basePoints, soloBonus: soloBonusPoints, perfectBonus: perfectBonusPoints, bonus: bonusPoints, total: basePoints + bonusPoints };
@@ -1478,8 +1497,10 @@ function renderBetPanel() {
 }
 
 function renderGameCard(game, playerName = "") {
-  const selected = selections[game.id] || "";
-  const kind = pickKind(selected);
+  const rawPicks = rawPicksForGame(selections, game.id);
+  const completePicks = picksForGame(selections, game.id);
+  const selectedKinds = new Set(rawPicks.map(pickKind).filter(Boolean));
+  const maxed = rawPicks.length >= MAX_PICKS_PER_GAME;
   const locked = isGameLockedForPlayer(game, playerName);
   const challenge = favoriteChallenge(game);
   const typeKeys = challenge
@@ -1494,27 +1515,35 @@ function renderGameCard(game, playerName = "") {
           : key === "halfResult"
             ? "1st half 1X2"
             : key === "halfGoals"
-              ? "1st half O/U1.5"
+              ? "goals HT"
               : key === "exactScore"
                 ? "Exact score"
                 : key;
-      return `<button class="pick-button ${key === kind ? "selected" : ""}" type="button" data-type="${key}" data-game="${game.id}" ${locked ? "disabled" : ""}>${label}</button>`;
+      const selected = selectedKinds.has(key);
+      const disabled = locked || (maxed && !selected);
+      const cleanLabel = key === "halfResult" ? "result HT" : label;
+      return `<button class="pick-button ${selected ? "selected" : ""}" type="button" data-type="${key}" data-game="${game.id}" ${disabled ? "disabled" : ""}>${cleanLabel}</button>`;
     })
     .join("");
-  const exact = exactScoreInfo(selected);
-  const partialExact = String(selected || "").match(/^ES:([0-9]?)-([0-9]?)$/);
-  const optionButtons = kind === "exactScore"
-    ? `<div class="exact-score-pick" data-exact-game="${game.id}">
+  const selectedSections = typeKeys
+    .filter((key) => selectedKinds.has(key))
+    .map((key) => {
+      const currentPick = rawPicks.find((pick) => pickKind(pick) === key) || "";
+      const exact = exactScoreInfo(currentPick);
+      const partialExact = String(currentPick || "").match(/^ES:([0-9]?)-([0-9]?)$/);
+      const label = key === "halfResult" ? "result HT" : key === "halfGoals" ? "goals HT" : key === "exactScore" ? "Exact score" : key === "both" ? "GG/NG" : key === "challenge" ? "Favorite+" : key;
+      const body = key === "exactScore"
+        ? `<div class="exact-score-pick" data-exact-game="${game.id}">
         <input data-exact-side="1" data-game="${game.id}" type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" value="${escapeHtml(String(exact?.score1 ?? partialExact?.[1] ?? ""))}" placeholder="0" aria-label="${escapeHtml(game.team1)} exact score" ${locked ? "disabled" : ""} />
         <span>-</span>
         <input data-exact-side="2" data-game="${game.id}" type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" value="${escapeHtml(String(exact?.score2 ?? partialExact?.[2] ?? ""))}" placeholder="0" aria-label="${escapeHtml(game.team2)} exact score" ${locked ? "disabled" : ""} />
       </div>`
-    : kind
-      ? (kind === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(kind))
-        .map((option) => `<button class="pick-button ${option === selected ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`)
-        .join("")
-      : `<span class="small">Choose pick type first</span>`;
-  const clearButton = selected && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
+        : (key === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(key))
+          .map((option) => `<button class="pick-button ${option === currentPick ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`)
+          .join("");
+      return `<div class="pick-section"><div class="pick-type"><span>${escapeHtml(label)}</span></div><div class="pick-grid">${body}</div></div>`;
+    }).join("") || `<span class="small">Choose up to ${MAX_PICKS_PER_GAME} bet types for this game</span>`;
+  const clearButton = rawPicks.length && !locked ? `<button class="text-button" type="button" data-clear="${game.id}">Clear this game</button>` : "";
   const challengeBadge = challenge
     ? `<div class="challenge-badge">Favorite Challenge: ${escapeHtml(challenge.side === "1" ? game.team1 : game.team2)} has extra margin picks</div>`
     : "";
@@ -1526,10 +1555,9 @@ function renderGameCard(game, playerName = "") {
       <div class="team-row"><strong>${escapeHtml(game.team2)}</strong><span>2</span></div>
     </div>
     <div class="small">${escapeHtml(game.venue || "Venue TBD")}${completedGame(game) ? ` &middot; Final ${game.score1}-${game.score2}` : ""}</div>
-    <div class="pick-type"><span>Pick type</span><span>${kind || "none"}</span></div>
+    <div class="pick-type"><span>Pick type</span><span>${rawPicks.length}/${MAX_PICKS_PER_GAME}</span></div>
     <div class="pick-grid">${typeButtons}</div>
-    <div class="pick-type"><span>Pick</span></div>
-    <div class="pick-grid">${optionButtons}</div>
+    ${selectedSections}
     ${clearButton}
   </article>`;
 }
@@ -1919,16 +1947,16 @@ function renderHistory() {
           const statusClass = complete ? (points > 0 ? "win" : "loss") : "";
           const lines = games
             .map((game) => {
-              const pick = picks[game.id] || "";
-              const marker = completedGame(game) && pick
-                ? (pickWins(pick, game)
+              const gamePicks = rawPicksForGame(picks, game.id);
+              const marker = completedGame(game) && gamePicks.length
+                ? (gamePicks.every((pick) => pickWins(pick, game))
                     ? `<span class="pick-result correct" title="Correct">✓</span>`
                     : `<span class="pick-result wrong" title="Wrong">X</span>`)
                 : `<span class="pick-result"></span>`;
               return `<div class="pick-line">
               <span>G${game.index}</span>
               <strong>${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
-              <span>${escapeHtml(pickLabel(pick, game))}</span>
+              <span>${escapeHtml(gamePicks.map((pick) => pickLabel(pick, game)).join(", "))}</span>
               ${marker}
             </div>`;
             })
@@ -2381,28 +2409,30 @@ function playerStats(player, calc) {
     let dayWrong = 0;
     let dayPending = 0;
 
-    Object.entries(picks).forEach(([gameId, pick]) => {
+    Object.entries(picks).forEach(([gameId]) => {
       const game = games.find((item) => item.id === gameId);
-      const kind = pickKind(pick);
-      if (!game || !kind || !stats.typeStats[kind]) return;
-      stats.totalPicks += 1;
-      stats.typeStats[kind].total += 1;
-      if (!completedGame(game)) {
-        stats.pending += 1;
-        stats.typeStats[kind].pending += 1;
-        dayPending += 1;
-        return;
-      }
-      if (pickWins(pick, game)) {
-        stats.correct += 1;
-        stats.typeStats[kind].correct += 1;
-        stats.typeStats[kind].points += pickPoints(pick);
-        dayCorrect += 1;
-      } else {
-        stats.wrong += 1;
-        stats.typeStats[kind].wrong += 1;
-        dayWrong += 1;
-      }
+      rawPicksForGame(picks, gameId).forEach((pick) => {
+        const kind = pickKind(pick);
+        if (!game || !kind || !stats.typeStats[kind]) return;
+        stats.totalPicks += 1;
+        stats.typeStats[kind].total += 1;
+        if (!completedGame(game)) {
+          stats.pending += 1;
+          stats.typeStats[kind].pending += 1;
+          dayPending += 1;
+          return;
+        }
+        if (pickWins(pick, game)) {
+          stats.correct += 1;
+          stats.typeStats[kind].correct += 1;
+          stats.typeStats[kind].points += pickPoints(pick);
+          dayCorrect += 1;
+        } else {
+          stats.wrong += 1;
+          stats.typeStats[kind].wrong += 1;
+          dayWrong += 1;
+        }
+      });
     });
 
     if (completedDay) {
@@ -2519,9 +2549,10 @@ function renderPlayerStats() {
 function validateSelections(date) {
   const games = state.games[date] || [];
   const validIds = new Set(games.map((game) => game.id));
-  const picks = Object.entries(selections).filter(([id, pick]) => validIds.has(id) && pick);
+  const picks = Object.entries(selections).flatMap(([id]) => validIds.has(id) ? rawPicksForGame(selections, id).map((pick) => [id, pick]) : []);
   if (!picks.length) return "Pick at least one game.";
-  if (picks.length > games.length) return `This day has only ${games.length} games.`;
+  const tooMany = Object.keys(selections).find((id) => rawPicksForGame(selections, id).length > MAX_PICKS_PER_GAME);
+  if (tooMany) return `Choose max ${MAX_PICKS_PER_GAME} bet types for one game.`;
   const badPick = picks.find(([, pick]) => !pickKind(pick));
   if (badPick) return "One of the selected picks is not allowed.";
   const incompleteExact = picks.find(([, pick]) => pickKind(pick) === "exactScore" && !exactScoreInfo(pick));
@@ -2531,7 +2562,11 @@ function validateSelections(date) {
   const playerName = $("playerName")?.value?.trim() || "";
   const savedName = findPlayerName(playerName) || playerName;
   const existingPicks = getBetPicks(state.bets[date]?.[savedName]) || {};
-  const lockedPick = picks.find(([id, pick]) => isGameLockedForPlayer(games.find((game) => game.id === id), savedName) && existingPicks[id] !== pick);
+  const lockedPick = picks.find(([id]) => {
+    const oldPicks = rawPicksForGame(existingPicks, id).join("|");
+    const newPicks = rawPicksForGame(selections, id).join("|");
+    return isGameLockedForPlayer(games.find((game) => game.id === id), savedName) && oldPicks !== newPicks;
+  });
   if (lockedPick) return "One selected game is locked. Only open games can be saved.";
   return "";
 }
@@ -2567,11 +2602,27 @@ function bindEvents() {
       delete selections[gameId];
     } else if (button.dataset.type) {
       const game = (state.games[getActiveDate()] || []).find((item) => item.id === gameId);
-      selections[gameId] = button.dataset.type === "exactScore"
+      const current = rawPicksForGame(selections, gameId);
+      const existingIndex = current.findIndex((pick) => pickKind(pick) === button.dataset.type);
+      if (existingIndex >= 0) {
+        current.splice(existingIndex, 1);
+        if (current.length) selections[gameId] = current;
+        else delete selections[gameId];
+        renderBetPanel();
+        return;
+      }
+      if (picksForGame(selections, gameId).length >= MAX_PICKS_PER_GAME) return;
+      const nextPick = button.dataset.type === "exactScore"
         ? "ES:-"
         : (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
+      selections[gameId] = [...current, nextPick];
     } else if (button.dataset.pick) {
-      selections[gameId] = button.dataset.pick;
+      const current = rawPicksForGame(selections, gameId);
+      const nextKind = pickKind(button.dataset.pick);
+      const existingIndex = current.findIndex((pick) => pickKind(pick) === nextKind);
+      if (existingIndex >= 0) current[existingIndex] = button.dataset.pick;
+      else current.push(button.dataset.pick);
+      selections[gameId] = current.slice(0, MAX_PICKS_PER_GAME);
     }
     renderBetPanel();
   });
@@ -2584,7 +2635,11 @@ function bindEvents() {
     const wrap = input.closest("[data-exact-game]");
     const score1 = wrap?.querySelector('[data-exact-side="1"]')?.value || "";
     const score2 = wrap?.querySelector('[data-exact-side="2"]')?.value || "";
-    selections[gameId] = `ES:${score1}-${score2}`;
+    const current = rawPicksForGame(selections, gameId);
+    const existingIndex = current.findIndex((pick) => pickKind(pick) === "exactScore");
+    if (existingIndex >= 0) current[existingIndex] = `ES:${score1}-${score2}`;
+    else current.push(`ES:${score1}-${score2}`);
+    selections[gameId] = current.slice(0, MAX_PICKS_PER_GAME);
     const selectedCount = selectedPickCount();
     const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
     $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
@@ -2601,7 +2656,10 @@ function bindEvents() {
     const error = validateSelections(date);
     if (error) return showToast(error);
     const validIds = new Set((state.games[date] || []).map((game) => game.id));
-    const picks = Object.fromEntries(Object.entries(selections).filter(([id, pick]) => validIds.has(id) && isCompletePick(pick)));
+    const picks = Object.fromEntries(Object.entries(selections)
+      .filter(([id]) => validIds.has(id))
+      .map(([id]) => [id, picksForGame(selections, id)])
+      .filter(([, picks]) => picks.length));
     try {
       const savedName = await saveBet(date, playerName, playerPin, picks);
       rememberPlayerCredentials(savedName, playerPin);
