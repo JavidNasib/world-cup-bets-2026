@@ -2350,23 +2350,62 @@ function renderPathTableOverview(groups) {
 }
 
 const BRACKET_SLOTS = [
-  { side: "left", teams: [["GERMANY", "🇩🇪"], ["PARAGUAY", "🇵🇾"]], colors: ["black-red", "red-white"] },
-  { side: "left", teams: [["FRANCE", "🇫🇷"], ["SWEDEN", "🇸🇪"]], colors: ["blue-red", "blue-yellow"] },
-  { side: "left", teams: [["SOUTH AFRICA", "🇿🇦"], ["CANADA", "🇨🇦"]], colors: ["green-gold", "red-white"] },
-  { side: "left", teams: [["NETHERLANDS", "🇳🇱"], ["MOROCCO", "🇲🇦"]], colors: ["orange-blue", "red-green"] },
-  { side: "left", teams: [["PORTUGAL", "🇵🇹"], ["CROATIA", "🇭🇷"]], colors: ["red-green", "checker"] },
-  { side: "left", teams: [["SPAIN", "🇪🇸"], ["AUSTRIA", "🇦🇹"]], colors: ["red-gold", "red-white"] },
-  { side: "left", teams: [["UNITED STATES", "🇺🇸"], ["BOSNIA & HERZ.", "🇧🇦"]], colors: ["blue-red", "blue-gold"] },
-  { side: "left", teams: [["BELGIUM", "🇧🇪"], ["SENEGAL", "🇸🇳"]], colors: ["red-gold", "green-gold"] },
-  { side: "right", teams: [["BRAZIL", "🇧🇷"], ["JAPAN", "🇯🇵"]], colors: ["green-gold", "white-red"] },
-  { side: "right", teams: [["IVORY COAST", "🇨🇮"], ["NORWAY", "🇳🇴"]], colors: ["orange-green", "red-blue"] },
-  { side: "right", teams: [["MEXICO", "🇲🇽"], ["ECUADOR", "🇪🇨"]], colors: ["green-red", "yellow-blue"] },
-  { side: "right", teams: [["ENGLAND", "🏴"], ["DR CONGO", "🇨🇩"]], colors: ["white-red", "blue-red"] },
-  { side: "right", teams: [["ARGENTINA", "🇦🇷"], ["CAPE VERDE", "🇨🇻"]], colors: ["sky-blue", "blue-red"] },
-  { side: "right", teams: [["AUSTRALIA", "🇦🇺"], ["EGYPT", "🇪🇬"]], colors: ["navy-gold", "white-red"] },
-  { side: "right", teams: [["SWITZERLAND", "🇨🇭"], ["ALGERIA", "🇩🇿"]], colors: ["red-white", "green-red"] },
-  { side: "right", teams: [["COLOMBIA", "🇨🇴"], ["GHANA", "🇬🇭"]], colors: ["yellow-blue", "green-gold"] }
+  { side: "left", teams: [["GERMANY", "DE"], ["PARAGUAY", "PY"]], colors: ["black-red", "red-white"] },
+  { side: "left", teams: [["FRANCE", "FR"], ["SWEDEN", "SE"]], colors: ["blue-red", "blue-yellow"] },
+  { side: "left", teams: [["SOUTH AFRICA", "ZA"], ["CANADA", "CA"]], colors: ["green-gold", "red-white"] },
+  { side: "left", teams: [["NETHERLANDS", "NL"], ["MOROCCO", "MA"]], colors: ["orange-blue", "red-green"] },
+  { side: "left", teams: [["PORTUGAL", "PT"], ["CROATIA", "HR"]], colors: ["red-green", "checker"] },
+  { side: "left", teams: [["SPAIN", "ES"], ["AUSTRIA", "AT"]], colors: ["red-gold", "red-white"] },
+  { side: "left", teams: [["UNITED STATES", "US"], ["BOSNIA & HERZ.", "BA"]], colors: ["blue-red", "blue-gold"] },
+  { side: "left", teams: [["BELGIUM", "BE"], ["SENEGAL", "SN"]], colors: ["red-gold", "green-gold"] },
+  { side: "right", teams: [["BRAZIL", "BR"], ["JAPAN", "JP"]], colors: ["green-gold", "white-red"] },
+  { side: "right", teams: [["IVORY COAST", "CI"], ["NORWAY", "NO"]], colors: ["orange-green", "red-blue"] },
+  { side: "right", teams: [["MEXICO", "MX"], ["ECUADOR", "EC"]], colors: ["green-red", "yellow-blue"] },
+  { side: "right", teams: [["ENGLAND", "EN"], ["DR CONGO", "CD"]], colors: ["white-red", "blue-red"] },
+  { side: "right", teams: [["ARGENTINA", "AR"], ["CAPE VERDE", "CV"]], colors: ["sky-blue", "blue-red"] },
+  { side: "right", teams: [["AUSTRALIA", "AU"], ["EGYPT", "EG"]], colors: ["navy-gold", "white-red"] },
+  { side: "right", teams: [["SWITZERLAND", "CH"], ["ALGERIA", "DZ"]], colors: ["red-white", "green-red"] },
+  { side: "right", teams: [["COLOMBIA", "CO"], ["GHANA", "GH"]], colors: ["yellow-blue", "green-gold"] }
 ];
+
+function bracketTeamKey(team) {
+  return String(team || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function completedKnockoutGames() {
+  return Object.values(state.games).flat().filter((game) => game.date >= "2026-06-28" && completedGame(game));
+}
+
+function findKnockoutGame(teamA, teamB) {
+  const keyA = bracketTeamKey(teamA);
+  const keyB = bracketTeamKey(teamB);
+  return completedKnockoutGames().find((game) => {
+    const gameA = bracketTeamKey(game.team1);
+    const gameB = bracketTeamKey(game.team2);
+    return (gameA === keyA && gameB === keyB) || (gameA === keyB && gameB === keyA);
+  });
+}
+
+function knockoutWinner(teamA, teamB) {
+  if (!teamA || !teamB) return "";
+  const game = findKnockoutGame(teamA, teamB);
+  if (!game || Number(game.score1) === Number(game.score2)) return "";
+  return Number(game.score1) > Number(game.score2) ? game.team1 : game.team2;
+}
+
+function computeBracketProgress() {
+  const progress = { left: {}, right: {} };
+  ["left", "right"].forEach((side) => {
+    const slots = BRACKET_SLOTS.filter((slot) => slot.side === side);
+    const roundOne = slots.map((slot) => knockoutWinner(slot.teams[0][0], slot.teams[1][0]));
+    const roundTwo = [0, 2, 4, 6].map((index) => knockoutWinner(roundOne[index], roundOne[index + 1]));
+    const roundThree = [0, 2].map((index) => knockoutWinner(roundTwo[index], roundTwo[index + 1]));
+    const finalist = knockoutWinner(roundThree[0], roundThree[1]);
+    progress[side] = { roundOne, roundTwo, roundThree, finalist };
+  });
+  progress.champion = knockoutWinner(progress.left.finalist, progress.right.finalist);
+  return progress;
+}
 
 function renderBracketTeam(team, color) {
   return `<div class="bracket-team team-${color}">
@@ -2374,56 +2413,60 @@ function renderBracketTeam(team, color) {
   </div>`;
 }
 
-function renderBracketSlot(slot, index) {
+function renderWinnerBox(label, className = "") {
+  return `<div class="bracket-small-box ${className} ${label ? "filled" : ""}">${escapeHtml(label || "")}</div>`;
+}
+
+function renderBracketSlot(slot, index, progress) {
   const roundTwoClass = slot.side === "left" ? "slot-next-left" : "slot-next-right";
   return `<div class="bracket-slot ${slot.side}">
     <div class="bracket-teams">
       ${slot.teams.map((team, teamIndex) => renderBracketTeam(team, slot.colors[teamIndex])).join("")}
     </div>
     <div class="bracket-connector"><span></span></div>
-    <div class="bracket-small-box ${roundTwoClass}" aria-label="Winner of match ${index + 1}"></div>
+    ${renderWinnerBox(progress[slot.side].roundOne[index], roundTwoClass)}
   </div>`;
 }
 
-function renderBracketColumn(side) {
+function renderBracketColumn(side, progress) {
   return `<div class="bracket-side ${side}">
-    ${BRACKET_SLOTS.filter((slot) => slot.side === side).map(renderBracketSlot).join("")}
+    ${BRACKET_SLOTS.filter((slot) => slot.side === side).map((slot, index) => renderBracketSlot(slot, index, progress)).join("")}
+  </div>`;
+}
+
+function renderBracketMiddle(side, progress) {
+  return `<div class="bracket-middle ${side}-mid">
+    <div class="bracket-mid-box small ${progress[side].roundThree[0] ? "filled" : ""}">${escapeHtml(progress[side].roundThree[0] || "")}</div>
+    <div class="bracket-mid-box tall ${progress[side].finalist ? "filled" : ""}">${escapeHtml(progress[side].finalist || "")}</div>
+    <div class="bracket-mid-box small ${progress[side].roundThree[1] ? "filled" : ""}">${escapeHtml(progress[side].roundThree[1] || "")}</div>
   </div>`;
 }
 
 function renderBracketPathOverview() {
   const panel = $("knockoutPathPanel");
   if (!panel) return;
+  const progress = computeBracketProgress();
   panel.innerHTML = `<div class="bracket-board">
     <div class="bracket-bg-lines"></div>
-    ${renderBracketColumn("left")}
-    <div class="bracket-middle left-mid">
-      <div class="bracket-mid-box small"></div>
-      <div class="bracket-mid-box tall"></div>
-      <div class="bracket-mid-box small"></div>
-    </div>
+    ${renderBracketColumn("left", progress)}
+    ${renderBracketMiddle("left", progress)}
     <div class="bracket-center">
       <div class="trophy-mark">
         <div class="trophy-cup"></div>
         <strong>FIFA</strong>
       </div>
       <div class="final-row">
-        <div class="final-box"></div>
-        <div class="final-box"></div>
+        <div class="final-box ${progress.left.finalist ? "filled" : ""}">${escapeHtml(progress.left.finalist || "")}</div>
+        <div class="final-box ${progress.right.finalist ? "filled" : ""}">${escapeHtml(progress.right.finalist || "")}</div>
       </div>
-      <div class="champion-box">
-        <span>CHAMPION</span>
+      <div class="champion-box ${progress.champion ? "filled" : ""}">
+        <span>${escapeHtml(progress.champion || "CHAMPION")}</span>
       </div>
     </div>
-    <div class="bracket-middle right-mid">
-      <div class="bracket-mid-box small"></div>
-      <div class="bracket-mid-box tall"></div>
-      <div class="bracket-mid-box small"></div>
-    </div>
-    ${renderBracketColumn("right")}
+    ${renderBracketMiddle("right", progress)}
+    ${renderBracketColumn("right", progress)}
   </div>`;
 }
-
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2454,7 +2497,6 @@ function renderStats() {
           ${renderGroupRecentScores(group)}
           <h3>H2H Previous meeting</h3>
           ${renderGroupH2H(games)}
-          ${renderGroupPath(group)}
         </div>
       </details>`;
     }).join("");

@@ -930,10 +930,10 @@ textarea {
   --bracket-line: rgba(205, 161, 89, 0.95);
   position: relative;
   display: grid;
-  grid-template-columns: minmax(165px, 1fr) 84px minmax(210px, 0.9fr) 84px minmax(165px, 1fr);
-  gap: 10px;
-  min-height: 620px;
-  padding: 16px 12px;
+  grid-template-columns: 128px 96px minmax(190px, 0.9fr) 96px 128px;
+  gap: 7px;
+  min-height: 372px;
+  padding: 8px 6px;
   overflow: hidden;
   border: 1px solid #1a3656;
   border-radius: 8px;
@@ -965,18 +965,18 @@ textarea {
 .bracket-side {
   display: grid;
   grid-template-rows: repeat(8, 1fr);
-  gap: 10px;
+  gap: 4px;
 }
 
 .bracket-slot {
   display: grid;
   align-items: center;
-  grid-template-columns: minmax(112px, 1fr) 34px 30px;
-  min-height: 62px;
+  grid-template-columns: 94px 22px 26px;
+  min-height: 40px;
 }
 
 .bracket-slot.right {
-  grid-template-columns: 30px 34px minmax(112px, 1fr);
+  grid-template-columns: 26px 22px 94px;
 }
 
 .bracket-slot.right .bracket-teams {
@@ -996,19 +996,19 @@ textarea {
 
 .bracket-teams {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .bracket-team {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr) 19px;
   align-items: center;
-  min-height: 23px;
-  padding: 2px 4px 2px 9px;
+  min-height: 17px;
+  padding: 1px 3px 1px 6px;
   border: 1px solid rgba(255, 210, 117, 0.75);
-  border-radius: 4px;
+  border-radius: 3px;
   color: #fff;
-  font-size: 0.72rem;
+  font-size: 0.55rem;
   font-weight: 1000;
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
@@ -1017,7 +1017,7 @@ textarea {
 
 .bracket-team b {
   justify-self: end;
-  font-size: 0.86rem;
+  font-size: 0.55rem;
   line-height: 1;
 }
 
@@ -1040,7 +1040,7 @@ textarea {
 
 .bracket-connector {
   position: relative;
-  height: 50px;
+  height: 34px;
 }
 
 .bracket-connector::before,
@@ -1048,7 +1048,7 @@ textarea {
   content: "";
   position: absolute;
   right: 0;
-  width: 24px;
+  width: 16px;
   height: 50%;
   border-right: 2px solid var(--bracket-line);
 }
@@ -1065,9 +1065,9 @@ textarea {
 
 .bracket-connector span {
   position: absolute;
-  right: -24px;
+  right: -15px;
   top: calc(50% - 1px);
-  width: 24px;
+  width: 15px;
   border-top: 2px solid var(--bracket-line);
 }
 
@@ -1082,26 +1082,26 @@ textarea {
 }
 
 .bracket-small-box {
-  width: 30px;
-  height: 22px;
+  width: 26px;
+  height: 15px;
 }
 
 .bracket-middle {
   display: grid;
   grid-template-rows: 1fr 2fr 1fr;
   align-items: center;
-  gap: 28px;
+  gap: 20px;
 }
 
 .bracket-mid-box.small {
-  width: 58px;
-  height: 34px;
+  width: 48px;
+  height: 26px;
   justify-self: center;
 }
 
 .bracket-mid-box.tall {
-  width: 74px;
-  height: 106px;
+  width: 58px;
+  height: 68px;
   justify-self: center;
 }
 
@@ -1109,8 +1109,8 @@ textarea {
 .right-mid::before {
   content: "";
   position: absolute;
-  inset: 72px 50% 72px auto;
-  width: 42px;
+  inset: 48px 50% 48px auto;
+  width: 34px;
   border-top: 2px solid var(--bracket-line);
   border-bottom: 2px solid var(--bracket-line);
   border-right: 2px solid var(--bracket-line);
@@ -1118,7 +1118,7 @@ textarea {
 }
 
 .right-mid::before {
-  inset: 72px auto 72px 50%;
+  inset: 48px auto 48px 50%;
   border-right: 0;
   border-left: 2px solid var(--bracket-line);
 }
@@ -1127,12 +1127,12 @@ textarea {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 18px;
+  gap: 10px;
 }
 
 .trophy-mark {
-  width: 82px;
-  min-height: 102px;
+  width: 60px;
+  min-height: 74px;
   display: grid;
   justify-items: center;
   align-content: center;
@@ -1146,37 +1146,39 @@ textarea {
 
 .trophy-cup {
   position: relative;
-  width: 36px;
-  height: 52px;
-  border-radius: 50% 50% 32% 32%;
-  background: radial-gradient(circle at 38% 20%, #fff6a4, #d49b20 42%, #8a5f10 76%);
+  width: 28px;
+  height: 42px;
+  border-radius: 8px 8px 14px 14px;
+  background:
+    radial-gradient(circle at 45% 18%, #fff7b0, transparent 16%),
+    linear-gradient(90deg, #96660e, #f3cf43 28%, #d89b20 55%, #7a5109);
 }
 
 .trophy-cup::after {
   content: "";
   position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: -16px;
-  height: 18px;
-  background: linear-gradient(#d49b20, #8a5f10);
-  border-radius: 3px;
+  left: 7px;
+  right: 7px;
+  bottom: -13px;
+  height: 16px;
+  background: linear-gradient(#d49b20 0 48%, #7d560d 49% 100%);
+  border-radius: 2px;
 }
 
 .final-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
 }
 
 .final-box {
-  height: 112px;
+  height: 68px;
 }
 
 .champion-box {
-  width: 132px;
-  height: 78px;
+  width: 92px;
+  height: 46px;
   display: grid;
   place-items: end center;
   padding-bottom: 8px;
@@ -1187,6 +1189,26 @@ textarea {
   font-size: 1.05rem;
   font-weight: 1000;
   letter-spacing: 0.04em;
+}
+
+.bracket-small-box.filled,
+.bracket-mid-box.filled,
+.final-box.filled,
+.champion-box.filled {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  color: #fff;
+  font-size: 0.54rem;
+  font-weight: 1000;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.bracket-mid-box.tall.filled,
+.final-box.filled {
+  font-size: 0.66rem;
 }
 
 .group-recent-row,
@@ -1777,10 +1799,10 @@ textarea {
   }
 
   .bracket-board {
-    width: 980px;
-    min-height: 600px;
-    grid-template-columns: 190px 76px 230px 76px 190px;
-    padding: 14px 10px;
+    width: 640px;
+    min-height: 372px;
+    grid-template-columns: 128px 96px 190px 96px 128px;
+    padding: 8px 6px;
   }
 
   .recent-score-grid {
