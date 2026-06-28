@@ -2349,6 +2349,81 @@ function renderPathTableOverview(groups) {
   </div>`;
 }
 
+const BRACKET_SLOTS = [
+  { side: "left", teams: [["GERMANY", "🇩🇪"], ["PARAGUAY", "🇵🇾"]], colors: ["black-red", "red-white"] },
+  { side: "left", teams: [["FRANCE", "🇫🇷"], ["SWEDEN", "🇸🇪"]], colors: ["blue-red", "blue-yellow"] },
+  { side: "left", teams: [["SOUTH AFRICA", "🇿🇦"], ["CANADA", "🇨🇦"]], colors: ["green-gold", "red-white"] },
+  { side: "left", teams: [["NETHERLANDS", "🇳🇱"], ["MOROCCO", "🇲🇦"]], colors: ["orange-blue", "red-green"] },
+  { side: "left", teams: [["PORTUGAL", "🇵🇹"], ["CROATIA", "🇭🇷"]], colors: ["red-green", "checker"] },
+  { side: "left", teams: [["SPAIN", "🇪🇸"], ["AUSTRIA", "🇦🇹"]], colors: ["red-gold", "red-white"] },
+  { side: "left", teams: [["UNITED STATES", "🇺🇸"], ["BOSNIA & HERZ.", "🇧🇦"]], colors: ["blue-red", "blue-gold"] },
+  { side: "left", teams: [["BELGIUM", "🇧🇪"], ["SENEGAL", "🇸🇳"]], colors: ["red-gold", "green-gold"] },
+  { side: "right", teams: [["BRAZIL", "🇧🇷"], ["JAPAN", "🇯🇵"]], colors: ["green-gold", "white-red"] },
+  { side: "right", teams: [["IVORY COAST", "🇨🇮"], ["NORWAY", "🇳🇴"]], colors: ["orange-green", "red-blue"] },
+  { side: "right", teams: [["MEXICO", "🇲🇽"], ["ECUADOR", "🇪🇨"]], colors: ["green-red", "yellow-blue"] },
+  { side: "right", teams: [["ENGLAND", "🏴"], ["DR CONGO", "🇨🇩"]], colors: ["white-red", "blue-red"] },
+  { side: "right", teams: [["ARGENTINA", "🇦🇷"], ["CAPE VERDE", "🇨🇻"]], colors: ["sky-blue", "blue-red"] },
+  { side: "right", teams: [["AUSTRALIA", "🇦🇺"], ["EGYPT", "🇪🇬"]], colors: ["navy-gold", "white-red"] },
+  { side: "right", teams: [["SWITZERLAND", "🇨🇭"], ["ALGERIA", "🇩🇿"]], colors: ["red-white", "green-red"] },
+  { side: "right", teams: [["COLOMBIA", "🇨🇴"], ["GHANA", "🇬🇭"]], colors: ["yellow-blue", "green-gold"] }
+];
+
+function renderBracketTeam(team, color) {
+  return `<div class="bracket-team team-${color}">
+    <span>${escapeHtml(team[0])}</span><b>${escapeHtml(team[1])}</b>
+  </div>`;
+}
+
+function renderBracketSlot(slot, index) {
+  const roundTwoClass = slot.side === "left" ? "slot-next-left" : "slot-next-right";
+  return `<div class="bracket-slot ${slot.side}">
+    <div class="bracket-teams">
+      ${slot.teams.map((team, teamIndex) => renderBracketTeam(team, slot.colors[teamIndex])).join("")}
+    </div>
+    <div class="bracket-connector"><span></span></div>
+    <div class="bracket-small-box ${roundTwoClass}" aria-label="Winner of match ${index + 1}"></div>
+  </div>`;
+}
+
+function renderBracketColumn(side) {
+  return `<div class="bracket-side ${side}">
+    ${BRACKET_SLOTS.filter((slot) => slot.side === side).map(renderBracketSlot).join("")}
+  </div>`;
+}
+
+function renderBracketPathOverview() {
+  const panel = $("knockoutPathPanel");
+  if (!panel) return;
+  panel.innerHTML = `<div class="bracket-board">
+    <div class="bracket-bg-lines"></div>
+    ${renderBracketColumn("left")}
+    <div class="bracket-middle left-mid">
+      <div class="bracket-mid-box small"></div>
+      <div class="bracket-mid-box tall"></div>
+      <div class="bracket-mid-box small"></div>
+    </div>
+    <div class="bracket-center">
+      <div class="trophy-mark">
+        <div class="trophy-cup"></div>
+        <strong>FIFA</strong>
+      </div>
+      <div class="final-row">
+        <div class="final-box"></div>
+        <div class="final-box"></div>
+      </div>
+      <div class="champion-box">
+        <span>CHAMPION</span>
+      </div>
+    </div>
+    <div class="bracket-middle right-mid">
+      <div class="bracket-mid-box small"></div>
+      <div class="bracket-mid-box tall"></div>
+      <div class="bracket-mid-box small"></div>
+    </div>
+    ${renderBracketColumn("right")}
+  </div>`;
+}
+
 function renderStats() {
   const list = $("statsList");
   if (!list) return;
@@ -2360,7 +2435,7 @@ function renderStats() {
       return;
     }
     const { groups, teamToGroup } = inferGroups();
-    renderPathTableOverview(groups);
+    renderBracketPathOverview();
     list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
       const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
       const gameLabel = games.map(shortGameName).join(" & ");
