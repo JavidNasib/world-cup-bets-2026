@@ -1402,7 +1402,7 @@ function selectedPickCount(picks = selections) {
 }
 
 function countedPickCount(date, picks = selections) {
-  return Object.keys(picks || {}).reduce((sum, gameId) => sum + countedPicksForGame(date, picks, gameId).length, 0);
+  return Object.keys(picks || {}).filter((gameId) => countedPicksForGame(date, picks, gameId).length).length;
 }
 
 function completedGame(game) {
