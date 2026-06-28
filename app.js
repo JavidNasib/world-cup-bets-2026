@@ -56,6 +56,8 @@ const ABSOLUTE_MAX_PLAYERS = 7;
 const BET_LOCK_MINUTES_BEFORE_FIRST_GAME = 15;
 const GAME_RESULT_SYNC_DELAY_MS = 2 * 60 * 60 * 1000 + 15 * 60 * 1000;
 const TEST_ONLY_DATES = new Set(["2026-06-10"]);
+const NEW_PICK_TEST_ONLY_DATES = new Set(["2026-06-28"]);
+const LEGACY_SCORING_KINDS = new Set(["result", "goals", "both", "double", "challenge"]);
 const GROUP_STAGE_START_DATE = "2026-06-11";
 const GROUP_STAGE_END_DATE = "2026-06-27";
 const SPECIAL_GAME_LOCK_OVERRIDES = new Set(["760421"]);
@@ -368,6 +370,14 @@ function selectedGameIds(picks = selections) {
   return Object.keys(picks || {}).filter((gameId) => picksForGame(picks, gameId).length);
 }
 
+function pickCountsForDate(date, pick) {
+  return !NEW_PICK_TEST_ONLY_DATES.has(date) || LEGACY_SCORING_KINDS.has(pickKind(pick));
+}
+
+function countedPicksForGame(date, picks, gameId) {
+  return picksForGame(picks, gameId).filter((pick) => pickCountsForDate(date, pick));
+}
+
 function pickKind(value) {
   if (RESULT_OPTIONS.includes(value)) return "result";
   if (DOUBLE_OPTIONS.includes(value)) return "double";
@@ -450,7 +460,7 @@ function correctPlayersForGame(date, game) {
   return Object.entries(dayBets)
     .filter(([, bet]) => {
       const picks = getBetPicks(bet) || {};
-      return completedGame(game) && picksForGame(picks, game.id).some((pick) => pickWins(pick, game));
+      return completedGame(game) && countedPicksForGame(date, picks, game.id).some((pick) => pickWins(pick, game));
     })
     .map(([player]) => player);
 }
@@ -1391,6 +1401,10 @@ function selectedPickCount(picks = selections) {
   return Object.keys(picks || {}).reduce((sum, gameId) => sum + picksForGame(picks, gameId).length, 0);
 }
 
+function countedPickCount(date, picks = selections) {
+  return Object.keys(picks || {}).reduce((sum, gameId) => sum + countedPicksForGame(date, picks, gameId).length, 0);
+}
+
 function completedGame(game) {
   return game.completed && game.score1 !== null && game.score2 !== null;
 }
@@ -1454,10 +1468,10 @@ function dailyPlayerPoints(date, player) {
 function dailyPlayerPointBreakdown(date, player) {
   const games = state.games[date] || [];
   const picks = getBetPicks(state.bets[date]?.[player]) || {};
-  const selectedGames = games.filter((game) => picksForGame(picks, game.id).length);
+  const selectedGames = games.filter((game) => countedPicksForGame(date, picks, game.id).length);
   let soloBonusPoints = 0;
   const basePoints = games.reduce((sum, game) => {
-    const gamePicks = picksForGame(picks, game.id);
+    const gamePicks = countedPicksForGame(date, picks, game.id);
     if (!completedGame(game) || !gamePicks.length) return sum;
     const correctPicks = gamePicks.filter((pick) => pickWins(pick, game));
     if (!correctPicks.length) return sum;
@@ -1465,7 +1479,7 @@ function dailyPlayerPointBreakdown(date, player) {
     if (correctPlayers.length === 1 && correctPlayers[0] === player) soloBonusPoints += soloGameBonus();
     return sum + correctPicks.reduce((pickSum, pick) => pickSum + pickPoints(pick), 0);
   }, 0);
-  const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && picksForGame(picks, game.id).every((pick) => pickWins(pick, game)));
+  const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && countedPicksForGame(date, picks, game.id).every((pick) => pickWins(pick, game)));
   const perfectBonusPoints = games.length > 1 && allSelectedCorrect ? perfectDayBonus() : 0;
   const bonusPoints = soloBonusPoints + perfectBonusPoints;
   return { base: basePoints, soloBonus: soloBonusPoints, perfectBonus: perfectBonusPoints, bonus: bonusPoints, total: basePoints + bonusPoints };
@@ -1475,7 +1489,7 @@ function renderBetPanel() {
   const date = getActiveDate();
   const games = state.games[date] || [];
   const values = pointValues();
-  const selectedCount = selectedPickCount();
+  const selectedCount = countedPickCount(date);
   const playerName = $("playerName")?.value?.trim() || "";
   const nameOptions = $("playerNameOptions");
   if (nameOptions) {
@@ -1675,7 +1689,7 @@ function calculate() {
     const complete = games.length > 0 && games.every(completedGame);
     const dayBets = state.bets[date] || {};
     const dayPlayers = players.filter((player) => dayBets[player]);
-    const entries = Object.fromEntries(dayPlayers.map((player) => [player, selectedPickCount(getBetPicks(dayBets[player])) * entry]));
+    const entries = Object.fromEntries(dayPlayers.map((player) => [player, countedPickCount(date, getBetPicks(dayBets[player])) * entry]));
     const dayEntryTotal = Object.values(entries).reduce((sum, value) => sum + value, 0);
     const testOnly = !countedDate(date);
     const pointDetails = Object.fromEntries(dayPlayers.map((player) => [player, dailyPlayerPointBreakdown(date, player)]));
@@ -2422,6 +2436,7 @@ function playerStats(player, calc) {
     Object.entries(picks).forEach(([gameId]) => {
       const game = games.find((item) => item.id === gameId);
       rawPicksForGame(picks, gameId).forEach((pick) => {
+        if (!pickCountsForDate(date, pick)) return;
         const kind = pickKind(pick);
         if (!game || !kind || !stats.typeStats[kind]) return;
         stats.totalPicks += 1;
@@ -2650,7 +2665,7 @@ function bindEvents() {
     if (existingIndex >= 0) current[existingIndex] = `ES:${score1}-${score2}`;
     else current.push(`ES:${score1}-${score2}`);
     selections[gameId] = current.slice(0, MAX_PICKS_PER_GAME);
-    const selectedCount = selectedPickCount();
+    const selectedCount = countedPickCount(getActiveDate());
     const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
     $("betCost").innerHTML = `<strong>${selectedCount}</strong> selected game${selectedCount === 1 ? "" : "s"} &middot; Cost ${money(cost)}`;
   });
