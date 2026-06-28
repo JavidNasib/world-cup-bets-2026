@@ -1044,6 +1044,8 @@ textarea {
   text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.48);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .bracket-box:not(.filled) {
@@ -1051,8 +1053,8 @@ textarea {
 }
 
 .r1 {
-  left: 122px;
-  width: 26px;
+  left: 108px;
+  width: 48px;
   height: 15px;
 }
 .r1-1 { top: 10px; }
@@ -1066,7 +1068,7 @@ textarea {
 
 .r2 {
   left: 166px;
-  width: 34px;
+  width: 48px;
   height: 24px;
 }
 .r2-1 { top: 27px; }
@@ -1076,7 +1078,7 @@ textarea {
 
 .r3 {
   left: 214px;
-  width: 52px;
+  width: 58px;
   height: 30px;
 }
 .r3-1 { top: 66px; }
@@ -1090,13 +1092,13 @@ textarea {
   font-size: 0.64rem;
 }
 
-.side-bracket.right .r1 { left: auto; right: 122px; }
+.side-bracket.right .r1 { left: auto; right: 108px; }
 .side-bracket.right .r2 { left: auto; right: 166px; }
 .side-bracket.right .r3 { left: auto; right: 214px; }
 .side-bracket.right .side-final { left: auto; right: 224px; }
 
 .bline {
-  display: block;
+  display: none;
   background: var(--bracket-line);
 }
 .bline.h { height: 1px; }
@@ -1579,6 +1581,32 @@ textarea {
 
 .pick-line strong {
   color: var(--ink);
+}
+
+.history-pick-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.history-pick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 850;
+}
+
+.history-pick-chip b {
+  font-weight: 1000;
+}
+
+.history-pick-chip.correct b {
+  color: #0fa66a;
+}
+
+.history-pick-chip.wrong b {
+  color: #e03131;
 }
 
 .pick-result {

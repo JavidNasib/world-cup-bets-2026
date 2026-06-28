@@ -1972,16 +1972,19 @@ function renderHistory() {
           const lines = games
             .map((game) => {
               const gamePicks = rawPicksForGame(picks, game.id);
-              const marker = completedGame(game) && gamePicks.length
-                ? (gamePicks.every((pick) => pickWins(pick, game))
-                    ? `<span class="pick-result correct" title="Correct">✓</span>`
-                    : `<span class="pick-result wrong" title="Wrong">X</span>`)
-                : `<span class="pick-result"></span>`;
+              const pickLabels = gamePicks.length
+                ? gamePicks.map((pick) => {
+                    const label = historyPickLabel(pick, game);
+                    if (!completedGame(game)) return `<span class="history-pick-chip">${escapeHtml(label)}</span>`;
+                    const correct = pickWins(pick, game);
+                    return `<span class="history-pick-chip ${correct ? "correct" : "wrong"}">${escapeHtml(label)} <b>${correct ? "&check;" : "X"}</b></span>`;
+                  }).join("")
+                : "-";
               return `<div class="pick-line">
               <span>G${game.index}</span>
               <strong>${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
-              <span>${escapeHtml(gamePicks.map((pick) => historyPickLabel(pick, game)).join(", "))}</span>
-              ${marker}
+              <span class="history-pick-list">${pickLabels}</span>
+              <span class="pick-result"></span>
             </div>`;
             })
             .join("");
