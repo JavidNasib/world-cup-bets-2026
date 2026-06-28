@@ -419,6 +419,16 @@ function pickLabel(pick, game) {
   return `${team || `Team ${challenge.side}`} by ${challenge.margin}+`;
 }
 
+function historyPickLabel(pick, game) {
+  if (pick === "1") return "FT1";
+  if (pick === "X") return "FTX";
+  if (pick === "2") return "FT2";
+  if (pick === "H1") return "HT1";
+  if (pick === "HX") return "HTX";
+  if (pick === "H2") return "HT2";
+  return pickLabel(pick, game);
+}
+
 function pickPoints(pick) {
   const kind = pickKind(pick);
   const challenge = challengeInfo(pick);
@@ -1956,7 +1966,7 @@ function renderHistory() {
               return `<div class="pick-line">
               <span>G${game.index}</span>
               <strong>${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</strong>
-              <span>${escapeHtml(gamePicks.map((pick) => pickLabel(pick, game)).join(", "))}</span>
+              <span>${escapeHtml(gamePicks.map((pick) => historyPickLabel(pick, game)).join(", "))}</span>
               ${marker}
             </div>`;
             })
