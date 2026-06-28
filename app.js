@@ -2414,31 +2414,32 @@ function renderBracketTeam(team, color) {
 }
 
 function renderWinnerBox(label, className = "") {
-  return `<div class="bracket-small-box ${className} ${label ? "filled" : ""}">${escapeHtml(label || "")}</div>`;
+  return `<div class="bracket-box ${className} ${label ? "filled" : ""}">${escapeHtml(label || "")}</div>`;
 }
 
-function renderBracketSlot(slot, index, progress) {
-  const roundTwoClass = slot.side === "left" ? "slot-next-left" : "slot-next-right";
-  return `<div class="bracket-slot ${slot.side}">
-    <div class="bracket-teams">
-      ${slot.teams.map((team, teamIndex) => renderBracketTeam(team, slot.colors[teamIndex])).join("")}
-    </div>
-    <div class="bracket-connector"><span></span></div>
-    ${renderWinnerBox(progress[slot.side].roundOne[index], roundTwoClass)}
-  </div>`;
+function renderBracketLines(side) {
+  const rows = [1, 2, 3, 4, 5, 6, 7, 8].map((index) => `<i class="bline h h1-${index}"></i>`).join("");
+  const pairLines = [1, 2, 3, 4].map((index) => `<i class="bline v v2-${index}"></i><i class="bline h h2-${index}"></i>`).join("");
+  const groupLines = [1, 2].map((index) => `<i class="bline v v3-${index}"></i><i class="bline h h3-${index}"></i>`).join("");
+  return `<div class="bracket-lines ${side}">${rows}${pairLines}${groupLines}<i class="bline v v4"></i><i class="bline h h4"></i></div>`;
 }
 
-function renderBracketColumn(side, progress) {
-  return `<div class="bracket-side ${side}">
-    ${BRACKET_SLOTS.filter((slot) => slot.side === side).map((slot, index) => renderBracketSlot(slot, index, progress)).join("")}
-  </div>`;
-}
-
-function renderBracketMiddle(side, progress) {
-  return `<div class="bracket-middle ${side}-mid">
-    <div class="bracket-mid-box small ${progress[side].roundThree[0] ? "filled" : ""}">${escapeHtml(progress[side].roundThree[0] || "")}</div>
-    <div class="bracket-mid-box tall ${progress[side].finalist ? "filled" : ""}">${escapeHtml(progress[side].finalist || "")}</div>
-    <div class="bracket-mid-box small ${progress[side].roundThree[1] ? "filled" : ""}">${escapeHtml(progress[side].roundThree[1] || "")}</div>
+function renderBracketSide(side, progress) {
+  const slots = BRACKET_SLOTS.filter((slot) => slot.side === side);
+  const matches = slots.map((slot, index) => `<div class="bracket-match m${index + 1}">
+    ${slot.teams.map((team, teamIndex) => renderBracketTeam(team, slot.colors[teamIndex])).join("")}
+  </div>`).join("");
+  const roundOne = progress[side].roundOne.map((label, index) => renderWinnerBox(label, `r1 r1-${index + 1}`)).join("");
+  const roundTwo = progress[side].roundTwo.map((label, index) => renderWinnerBox(label, `r2 r2-${index + 1}`)).join("");
+  const roundThree = progress[side].roundThree.map((label, index) => renderWinnerBox(label, `r3 r3-${index + 1}`)).join("");
+  const finalist = renderWinnerBox(progress[side].finalist, "side-final");
+  return `<div class="side-bracket ${side}">
+    ${renderBracketLines(side)}
+    ${matches}
+    ${roundOne}
+    ${roundTwo}
+    ${roundThree}
+    ${finalist}
   </div>`;
 }
 
@@ -2448,23 +2449,15 @@ function renderBracketPathOverview() {
   const progress = computeBracketProgress();
   panel.innerHTML = `<div class="bracket-board">
     <div class="bracket-bg-lines"></div>
-    ${renderBracketColumn("left", progress)}
-    ${renderBracketMiddle("left", progress)}
+    ${renderBracketSide("left", progress)}
     <div class="bracket-center">
-      <div class="trophy-mark">
-        <div class="trophy-cup"></div>
-        <strong>FIFA</strong>
+      <div class="final-pair">
+        ${renderWinnerBox(progress.left.finalist, "final-box")}
+        ${renderWinnerBox(progress.right.finalist, "final-box")}
       </div>
-      <div class="final-row">
-        <div class="final-box ${progress.left.finalist ? "filled" : ""}">${escapeHtml(progress.left.finalist || "")}</div>
-        <div class="final-box ${progress.right.finalist ? "filled" : ""}">${escapeHtml(progress.right.finalist || "")}</div>
-      </div>
-      <div class="champion-box ${progress.champion ? "filled" : ""}">
-        <span>${escapeHtml(progress.champion || "CHAMPION")}</span>
-      </div>
+      <div class="champion-box ${progress.champion ? "filled" : ""}">${escapeHtml(progress.champion || "CHAMPION")}</div>
     </div>
-    ${renderBracketMiddle("right", progress)}
-    ${renderBracketColumn("right", progress)}
+    ${renderBracketSide("right", progress)}
   </div>`;
 }
 function renderStats() {
