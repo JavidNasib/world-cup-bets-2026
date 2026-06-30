@@ -410,6 +410,54 @@ textarea {
   gap: 8px;
 }
 
+.admin-tournament-grid,
+.stage-settings-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.stage-settings-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.stage-settings-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stage-settings-card h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.stage-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.stage-pick-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.stage-pick-option input {
+  width: auto;
+}
+
 .admin-match-controls,
 .admin-bet-reset-list {
   margin-top: 12px;

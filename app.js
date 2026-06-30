@@ -107,6 +107,32 @@ const DEFAULT_RULES = {
   4: { result: 1, goals: 2, double: 1 },
   6: { result: 2, goals: 0, double: 4 }
 };
+const PICK_TYPE_CONFIG = [
+  ["result", "result"],
+  ["goals", "goals"],
+  ["halfResult", "result HT"],
+  ["halfGoals", "goals HT"],
+  ["exactScore", "Exact score"],
+  ["both", "GG/NG"],
+  ["double", "double"],
+  ["challenge", "Favorite+"]
+];
+const DEFAULT_TOURNAMENT = {
+  name: "World Cup 2026",
+  groupStageStart: GROUP_STAGE_START_DATE,
+  groupStageEnd: GROUP_STAGE_END_DATE,
+  knockoutStart: "2026-06-28",
+  group: {
+    maxPicksPerGame: 1,
+    enabledPickTypes: ["result", "goals", "both", "double", "challenge"],
+    extraTime: false
+  },
+  knockout: {
+    maxPicksPerGame: 3,
+    enabledPickTypes: PICK_TYPE_CONFIG.map(([key]) => key),
+    extraTime: true
+  }
+};
 const PAYOUT_SHARES = [0.5, 0.3, 0.2];
 
 let db = null;
@@ -121,6 +147,7 @@ let state = {
     players: [],
     maxPlayers: 7,
     rules: DEFAULT_RULES,
+    tournament: DEFAULT_TOURNAMENT,
     pointValues: DEFAULT_POINT_VALUES,
     gameBetting: {},
     favoriteChallenges: {},
@@ -276,16 +303,60 @@ function newYorkDateKey(isoTime) {
 
 function bettingDateForGame(game, fallbackDate) {
   const localDate = newYorkDateKey(game.time || game.kickoff_time);
-  return DATE_COUNTS[localDate] ? localDate : fallbackDate;
+  return matchDates().includes(localDate) ? localDate : fallbackDate;
+}
+
+function matchDates() {
+  return [...new Set([...Object.keys(DATE_COUNTS), ...Object.keys(state.games || {})])].sort();
+}
+
+function dateGameCount(date) {
+  return (state.games[date] || []).filter((game) => !isPlaceholderGame(game)).length || DATE_COUNTS[date] || 0;
 }
 
 function nearestPlayableDate() {
   const today = todayKey();
-  return Object.keys(DATE_COUNTS).find((date) => date >= today) || Object.keys(DATE_COUNTS).at(-1);
+  const dates = matchDates();
+  return dates.find((date) => date >= today) || dates.at(-1);
 }
 
 function ruleForCount(count) {
   return { ...(DEFAULT_RULES[count] || { result: 0, goals: 0, double: 0 }), ...(state.settings.rules?.[count] || {}) };
+}
+
+function tournamentSettings() {
+  const saved = state.settings.tournament || {};
+  return {
+    ...DEFAULT_TOURNAMENT,
+    ...saved,
+    group: { ...DEFAULT_TOURNAMENT.group, ...(saved.group || {}) },
+    knockout: { ...DEFAULT_TOURNAMENT.knockout, ...(saved.knockout || {}) }
+  };
+}
+
+function tournamentStage(date) {
+  const tournament = tournamentSettings();
+  if (date >= tournament.groupStageStart && date <= tournament.groupStageEnd) return "group";
+  if (date >= tournament.knockoutStart) return "knockout";
+  return "group";
+}
+
+function stageRulesForDate(date) {
+  return tournamentSettings()[tournamentStage(date)] || DEFAULT_TOURNAMENT.group;
+}
+
+function maxNormalPicksForDate(date) {
+  return Math.max(1, Number(stageRulesForDate(date).maxPicksPerGame) || 1);
+}
+
+function enabledPickTypesForDate(date, game) {
+  const enabled = (stageRulesForDate(date).enabledPickTypes || DEFAULT_TOURNAMENT.group.enabledPickTypes)
+    .filter((key) => key !== "challenge" || favoriteChallenge(game));
+  return enabled.length ? enabled : ["result"];
+}
+
+function extraTimeEnabledForDate(date) {
+  return Boolean(stageRulesForDate(date).extraTime);
 }
 
 function realPlayers(players = state.settings.players) {
@@ -611,7 +682,16 @@ function loadLocal() {
     state = {
       ...state,
       ...parsed,
-      settings: { ...state.settings, ...(parsed.settings || {}) },
+      settings: {
+        ...state.settings,
+        ...(parsed.settings || {}),
+        tournament: {
+          ...DEFAULT_TOURNAMENT,
+          ...(parsed.settings?.tournament || {}),
+          group: { ...DEFAULT_TOURNAMENT.group, ...(parsed.settings?.tournament?.group || {}) },
+          knockout: { ...DEFAULT_TOURNAMENT.knockout, ...(parsed.settings?.tournament?.knockout || {}) }
+        }
+      },
       games: { ...state.games, ...(parsed.games || {}) },
       bets: parsed.bets || {}
     };
@@ -632,7 +712,17 @@ async function loadFromSupabase() {
     db.from("bets").select("*")
   ]);
   if (settingsRes.data?.data) {
-    state.settings = { ...state.settings, ...settingsRes.data.data };
+    const saved = settingsRes.data.data;
+    state.settings = {
+      ...state.settings,
+      ...saved,
+      tournament: {
+        ...DEFAULT_TOURNAMENT,
+        ...(saved.tournament || {}),
+        group: { ...DEFAULT_TOURNAMENT.group, ...(saved.tournament?.group || {}) },
+        knockout: { ...DEFAULT_TOURNAMENT.knockout, ...(saved.tournament?.knockout || {}) }
+      }
+    };
     normalizePlayers();
   }
   if (gamesRes.data?.length) {
@@ -645,7 +735,7 @@ async function loadFromSupabase() {
       else state.games[row.match_date].push(game);
       state.games[row.match_date].sort((a, b) => a.index - b.index);
     });
-    Object.keys(DATE_COUNTS).forEach((date) => {
+    matchDates().forEach((date) => {
       state.games[date] = cleanGamesForDate(date, state.games[date] || []);
     });
   }
@@ -780,7 +870,7 @@ async function saveBet(date, playerName, pin, picks) {
 }
 
 async function syncFixtures(silent = false) {
-  const dates = Object.keys(DATE_COUNTS);
+  const dates = matchDates();
   if (!silent) showToast("Syncing fixtures and results...");
   let updated = 0;
   for (const date of dates) {
@@ -961,10 +1051,13 @@ function renderMetrics() {
 function renderDates() {
   const select = $("dateSelect");
   const current = select.value || nearestPlayableDate();
-  select.innerHTML = Object.keys(DATE_COUNTS)
-    .map((date) => `<option value="${date}">${prettyDate(date)} · ${DATE_COUNTS[date]} game${DATE_COUNTS[date] > 1 ? "s" : ""}</option>`)
+  select.innerHTML = matchDates()
+    .map((date) => {
+      const count = dateGameCount(date);
+      return `<option value="${date}">${prettyDate(date)} · ${count} game${count === 1 ? "" : "s"}</option>`;
+    })
     .join("");
-  select.value = DATE_COUNTS[current] ? current : nearestPlayableDate();
+  select.value = matchDates().includes(current) ? current : nearestPlayableDate();
 }
 
 function renderBetPanel() {
@@ -1029,6 +1122,17 @@ function renderAdmin() {
   $("adminLock").classList.toggle("hidden", adminUnlocked);
   $("adminContent").classList.toggle("hidden", !adminUnlocked);
   if (!adminUnlocked) return;
+  const tournament = tournamentSettings();
+  $("tournamentName").value = tournament.name;
+  $("groupStageStart").value = tournament.groupStageStart;
+  $("groupStageEnd").value = tournament.groupStageEnd;
+  $("knockoutStart").value = tournament.knockoutStart;
+  $("groupMaxPicks").value = tournament.group.maxPicksPerGame;
+  $("knockoutMaxPicks").value = tournament.knockout.maxPicksPerGame;
+  $("groupExtraTime").checked = Boolean(tournament.group.extraTime);
+  $("knockoutExtraTime").checked = Boolean(tournament.knockout.extraTime);
+  renderStagePickTypeControls("groupPickTypes", "group", tournament.group.enabledPickTypes);
+  renderStagePickTypeControls("knockoutPickTypes", "knockout", tournament.knockout.enabledPickTypes);
   $("entryAmount").value = state.settings.entryAmount;
   $("maxPlayersInput").value = maxPlayers();
   $("adminPlayersList").textContent = state.settings.players.length
@@ -1099,7 +1203,7 @@ function calculate() {
   const daily = [];
   let rollover = 0;
 
-  Object.keys(DATE_COUNTS).forEach((date) => {
+  matchDates().forEach((date) => {
     const games = state.games[date] || [];
     const complete = games.length > 0 && games.every((game) => game.completed && game.score1 !== null && game.score2 !== null);
     if (!complete) {
@@ -1471,6 +1575,16 @@ function selectedPickCount(picks = selections) {
   return Object.keys(picks || {}).reduce((sum, gameId) => sum + picksForGame(picks, gameId).length, 0);
 }
 
+function renderStagePickTypeControls(containerId, stage, enabled = []) {
+  const container = $(containerId);
+  if (!container) return;
+  const selected = new Set(enabled);
+  container.innerHTML = PICK_TYPE_CONFIG.map(([key, label]) => `<label class="stage-pick-option">
+    <input type="checkbox" data-stage-pick="${stage}" value="${key}" ${selected.has(key) ? "checked" : ""} />
+    <span>${escapeHtml(label)}</span>
+  </label>`).join("");
+}
+
 function countedPickCount(date, picks = selections) {
   return Object.keys(picks || {}).filter((gameId) => countedPicksForGame(date, picks, gameId).length).length;
 }
@@ -1560,6 +1674,8 @@ function renderBetPanel() {
   const games = state.games[date] || [];
   const values = pointValues();
   const selectedCount = countedPickCount(date);
+  const maxPicks = maxNormalPicksForDate(date);
+  const stage = tournamentStage(date);
   const playerName = $("playerName")?.value?.trim() || "";
   const nameOptions = $("playerNameOptions");
   if (nameOptions) {
@@ -1567,18 +1683,17 @@ function renderBetPanel() {
   }
   const cost = selectedCount * (Number(state.settings.entryAmount) || 0);
   $("activeDateTitle").textContent = `${prettyDate(date)}${countedDate(date) ? "" : " - test only"}`;
+  const enabledKinds = enabledPickTypesForDate(date, {});
   $("dayRuleStrip").innerHTML = [
-    `<span class="rule-pill">1 pick per selected game</span>`,
-    `<span class="rule-pill">Result ${values.result} pts</span>`,
-    `<span class="rule-pill">Goals ${values.goals} pts</span>`,
-    `<span class="rule-pill">1st half result ${values.halfResult} pts</span>`,
-    `<span class="rule-pill">1st half O/U1.5 ${values.halfGoals} pts</span>`,
-    `<span class="rule-pill">Exact score ${values.exactScore} pts</span>`,
-    `<span class="rule-pill">GG/NG ${values.both} pts</span>`,
-    `<span class="rule-pill">Double ${values.double} pt</span>`,
-    `<span class="rule-pill">Extra time 1/X/2 ${values.extraResult} pts</span>`,
-    `<span class="rule-pill">Penalty winner ${values.penalty} pts</span>`,
-    `<span class="rule-pill">Favorite margin ${values.challenge2}/${values.challenge3} pts</span>`,
+    `<span class="rule-pill">${stage === "group" ? "Group stage" : "Knockout stage"}</span>`,
+    `<span class="rule-pill">Max ${maxPicks} pick${maxPicks === 1 ? "" : "s"} per selected game</span>`,
+    ...PICK_TYPE_CONFIG
+      .filter(([key]) => enabledKinds.includes(key))
+      .map(([key, label]) => `<span class="rule-pill">${label} ${key === "challenge" ? `${values.challenge2}/${values.challenge3}` : values[key]} pts</span>`),
+    ...(extraTimeEnabledForDate(date) ? [
+      `<span class="rule-pill">Extra time 1/X/2 ${values.extraResult} pts</span>`,
+      `<span class="rule-pill">Penalty winner ${values.penalty} pts</span>`
+    ] : []),
     `<span class="rule-pill">Solo correct bonus ${soloGameBonus()} pts</span>`,
     `<span class="rule-pill">All correct bonus ${perfectDayBonus()} pts</span>`
   ].join("");
@@ -1593,16 +1708,16 @@ function renderBetPanel() {
 }
 
 function renderGameCard(game, playerName = "") {
+  const date = getActiveDate();
   const rawPicks = rawPicksForGame(selections, game.id);
   const completePicks = picksForGame(selections, game.id);
   const selectedKinds = new Set(rawPicks.map(pickKind).filter(Boolean));
   const normalPicks = normalPicksForGame(selections, game.id);
-  const maxed = normalPicks.length >= MAX_PICKS_PER_GAME;
+  const maxPicks = maxNormalPicksForDate(date);
+  const maxed = normalPicks.length >= maxPicks;
   const locked = isGameLockedForPlayer(game, playerName);
   const challenge = favoriteChallenge(game);
-  const typeKeys = challenge
-    ? ["result", "goals", "halfResult", "halfGoals", "exactScore", "both", "double", "challenge"]
-    : ["result", "goals", "halfResult", "halfGoals", "exactScore", "both", "double"];
+  const typeKeys = enabledPickTypesForDate(date, game);
   const typeButtons = typeKeys
     .map((key) => {
       const label = key === "both"
@@ -1639,7 +1754,7 @@ function renderGameCard(game, playerName = "") {
           .map((option) => `<button class="pick-button ${option === currentPick ? "selected" : ""}" type="button" data-pick="${option}" data-game="${game.id}" ${locked ? "disabled" : ""}>${escapeHtml(pickLabel(option, game))}</button>`)
           .join("");
       return `<div class="pick-section"><div class="pick-type"><span>${escapeHtml(label)}</span></div><div class="pick-grid">${body}</div></div>`;
-    }).join("") || `<span class="small">Choose up to ${MAX_PICKS_PER_GAME} bet types for this game</span>`;
+    }).join("") || `<span class="small">Choose up to ${maxPicks} bet type${maxPicks === 1 ? "" : "s"} for this game</span>`;
   const extraPick = rawPicks.find((pick) => pickKind(pick) === "extraResult") || "";
   const penaltyPick = rawPicks.find((pick) => pickKind(pick) === "penalty") || "";
   const extraOpen = extraOpenGames.has(game.id) || Boolean(extraPick);
@@ -1663,13 +1778,13 @@ function renderGameCard(game, playerName = "") {
       <div class="team-row"><strong>${escapeHtml(game.team2)}</strong><span>2</span></div>
     </div>
     <div class="small">${escapeHtml(game.venue || "Venue TBD")}${completedGame(game) ? ` &middot; Final ${game.score1}-${game.score2}` : ""}</div>
-    <div class="pick-type"><span>Pick type</span><span>${normalPicks.length}/${MAX_PICKS_PER_GAME}</span></div>
+    <div class="pick-type"><span>Pick type</span><span>${normalPicks.length}/${maxPicks}</span></div>
     <div class="pick-grid">${typeButtons}</div>
     ${selectedSections}
-    <div class="extra-time-box">
+    ${extraTimeEnabledForDate(date) ? `<div class="extra-time-box">
       <button class="extra-toggle ${extraOpen ? "selected" : ""}" type="button" data-extra-toggle="${game.id}" data-game="${game.id}" ${locked ? "disabled" : ""}>if extra time</button>
       ${extraOptions}
-    </div>
+    </div>` : ""}
     ${clearButton}
   </article>`;
 }
@@ -1683,7 +1798,7 @@ function renderMiniResults(date) {
 }
 
 function nextDateAfter(date) {
-  const dates = Object.keys(DATE_COUNTS);
+  const dates = matchDates();
   const index = dates.indexOf(date);
   return index >= 0 ? dates[index + 1] : "";
 }
@@ -1704,6 +1819,17 @@ function renderAdmin() {
   $("adminLock").classList.toggle("hidden", adminUnlocked);
   $("adminContent").classList.toggle("hidden", !adminUnlocked);
   if (!adminUnlocked) return;
+  const tournament = tournamentSettings();
+  $("tournamentName").value = tournament.name;
+  $("groupStageStart").value = tournament.groupStageStart;
+  $("groupStageEnd").value = tournament.groupStageEnd;
+  $("knockoutStart").value = tournament.knockoutStart;
+  $("groupMaxPicks").value = tournament.group.maxPicksPerGame;
+  $("knockoutMaxPicks").value = tournament.knockout.maxPicksPerGame;
+  $("groupExtraTime").checked = Boolean(tournament.group.extraTime);
+  $("knockoutExtraTime").checked = Boolean(tournament.knockout.extraTime);
+  renderStagePickTypeControls("groupPickTypes", "group", tournament.group.enabledPickTypes);
+  renderStagePickTypeControls("knockoutPickTypes", "knockout", tournament.knockout.enabledPickTypes);
   $("entryAmount").value = state.settings.entryAmount;
   $("maxPlayersInput").value = maxPlayers();
   $("adminPlayersList").textContent = state.settings.players.length
@@ -1729,7 +1855,7 @@ function renderAdmin() {
       <input data-point-kind="${key}" type="number" min="0" step="1" value="${values[key]}" />
     </label>`)
     .join("");
-  $("adminFavoriteControls").innerHTML = Object.keys(DATE_COUNTS)
+  $("adminFavoriteControls").innerHTML = matchDates()
     .filter((date) => date >= todayKey())
     .map((date) => {
       const rows = (state.games[date] || [])
@@ -1753,7 +1879,7 @@ function renderAdmin() {
     })
     .join("") || `<div class="empty">No games available yet.</div>`;
   renderAdminLateUnlocks();
-  $("adminResults").innerHTML = Object.keys(DATE_COUNTS)
+  $("adminResults").innerHTML = matchDates()
     .map((date) => {
       const rows = (state.games[date] || [])
         .map((game) => `<div class="result-grid">
@@ -1774,7 +1900,7 @@ function calculate() {
   const daily = [];
   let totalPot = 0;
 
-  Object.keys(DATE_COUNTS).forEach((date) => {
+  matchDates().forEach((date) => {
     const games = state.games[date] || [];
     const complete = games.length > 0 && games.every(completedGame);
     const dayBets = state.bets[date] || {};
@@ -1841,7 +1967,7 @@ function assignTopPlacePayouts(totals, totalPot) {
 }
 
 function totalBonusPointsForPlayer(player) {
-  return Object.keys(DATE_COUNTS).reduce((sum, date) => {
+  return matchDates().reduce((sum, date) => {
     if (!countedDate(date)) return sum;
     return sum + dailyPlayerPointBreakdown(date, player).bonus;
   }, 0);
@@ -1902,7 +2028,7 @@ function renderDailyWinnerBanner() {
 }
 
 function historyDatesWithBets() {
-  return Object.keys(DATE_COUNTS).filter((date) => Object.keys(state.bets[date] || {}).length);
+  return matchDates().filter((date) => Object.keys(state.bets[date] || {}).length);
 }
 
 function latestHistoryDate() {
@@ -1911,7 +2037,7 @@ function latestHistoryDate() {
 }
 
 function ensureSelectedHistoryDate() {
-  if (selectedHistoryDate && DATE_COUNTS[selectedHistoryDate]) return selectedHistoryDate;
+  if (selectedHistoryDate && matchDates().includes(selectedHistoryDate)) return selectedHistoryDate;
   selectedHistoryDate = latestHistoryDate();
   return selectedHistoryDate;
 }
@@ -2101,7 +2227,7 @@ function renderHistory() {
 }
 
 function renderResults() {
-  $("resultsList").innerHTML = Object.keys(DATE_COUNTS)
+  $("resultsList").innerHTML = matchDates()
     .map((date) => {
       const games = (state.games[date] || []).filter((game) => completedGame(game) || game.time || game.team1 !== placeholderTeam(date, game.index - 1));
       if (!games.length) return "";
@@ -2118,7 +2244,7 @@ function renderResults() {
 }
 
 function statsDates() {
-  return Object.keys(DATE_COUNTS).filter((date) => (state.games[date] || []).some((game) => !isPlaceholderGame(game)));
+  return matchDates().filter((date) => (state.games[date] || []).some((game) => !isPlaceholderGame(game)));
 }
 
 function renderStatsDates() {
@@ -2145,10 +2271,11 @@ function h2hKey(team1, team2) {
 }
 
 function groupStageGames() {
+  const tournament = tournamentSettings();
   return Object.values(state.games)
     .flat()
-    .filter((game) => game.date >= GROUP_STAGE_START_DATE
-      && game.date <= GROUP_STAGE_END_DATE
+    .filter((game) => game.date >= tournament.groupStageStart
+      && game.date <= tournament.groupStageEnd
       && !isPlaceholderGame(game)
       && game.team1
       && game.team2);
@@ -2245,11 +2372,12 @@ function teamRecentScores(team, group) {
 }
 
 function tournamentTeamScores(team, cutoffDate = "") {
+  const tournament = tournamentSettings();
   return Object.values(state.games)
     .flat()
     .filter((game) => completedGame(game)
       && !isPlaceholderGame(game)
-      && game.date >= GROUP_STAGE_START_DATE
+      && game.date >= tournament.groupStageStart
       && (!cutoffDate || game.date <= cutoffDate)
       && (game.team1 === team || game.team2 === team))
     .sort((a, b) => `${b.date}-${b.index}`.localeCompare(`${a.date}-${a.index}`))
@@ -2624,7 +2752,7 @@ function renderStats() {
     }
     const { groups, teamToGroup } = inferGroups();
     renderBracketPathOverview();
-    if (date <= GROUP_STAGE_END_DATE) {
+    if (tournamentStage(date) === "group") {
       list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
         const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
         const gameLabel = games.map(shortGameName).join(" & ");
@@ -2707,7 +2835,7 @@ function playerStats(player, calc) {
     daily: []
   };
 
-  Object.keys(DATE_COUNTS).forEach((date) => {
+  matchDates().forEach((date) => {
     if (!countedDate(date)) return;
     const bet = state.bets[date]?.[player];
     if (!bet) return;
@@ -2859,13 +2987,21 @@ function renderPlayerStats() {
 
 function validateSelections(date) {
   const games = state.games[date] || [];
+  const maxPicks = maxNormalPicksForDate(date);
   const validIds = new Set(games.map((game) => game.id));
   const picks = Object.entries(selections).flatMap(([id]) => validIds.has(id) ? rawPicksForGame(selections, id).map((pick) => [id, pick]) : []);
   if (!picks.length) return "Pick at least one game.";
-  const tooMany = Object.keys(selections).find((id) => normalPicksForGame(selections, id).length > MAX_PICKS_PER_GAME);
-  if (tooMany) return `Choose max ${MAX_PICKS_PER_GAME} bet types for one game.`;
+  const tooMany = Object.keys(selections).find((id) => normalPicksForGame(selections, id).length > maxPicks);
+  if (tooMany) return `Choose max ${maxPicks} bet type${maxPicks === 1 ? "" : "s"} for one game.`;
   const badPick = picks.find(([, pick]) => !pickKind(pick));
   if (badPick) return "One of the selected picks is not allowed.";
+  const disabledPick = picks.find(([id, pick]) => {
+    const kind = pickKind(pick);
+    if (extraPickKind(kind)) return !extraTimeEnabledForDate(date);
+    const game = games.find((item) => item.id === id);
+    return !enabledPickTypesForDate(date, game).includes(kind);
+  });
+  if (disabledPick) return "One selected pick type is not enabled for this stage.";
   const incompleteExact = picks.find(([, pick]) => pickKind(pick) === "exactScore" && !exactScoreInfo(pick));
   if (incompleteExact) return "Finish the exact score pick or clear that game.";
   const badChallenge = picks.find(([id, pick]) => pickKind(pick) === "challenge" && !favoriteChallengeOptions(games.find((game) => game.id === id)).includes(pick));
@@ -2937,7 +3073,7 @@ function bindEvents() {
         renderBetPanel();
         return;
       }
-      if (normalPicksForGame(selections, gameId).length >= MAX_PICKS_PER_GAME) return;
+      if (normalPicksForGame(selections, gameId).length >= maxNormalPicksForDate(getActiveDate())) return;
       const nextPick = button.dataset.type === "exactScore"
         ? "ES:-"
         : (button.dataset.type === "challenge" ? favoriteChallengeOptions(game) : allowedOptions(button.dataset.type))[0];
@@ -3049,6 +3185,14 @@ function bindEvents() {
     if (state.settings.players.length > nextMaxPlayers) {
       return showToast(`You already have ${state.settings.players.length} players. Max cannot be lower than that.`);
     }
+    const groupPickTypes = [...document.querySelectorAll('[data-stage-pick="group"]:checked')].map((input) => input.value);
+    const knockoutPickTypes = [...document.querySelectorAll('[data-stage-pick="knockout"]:checked')].map((input) => input.value);
+    if (!groupPickTypes.length || !knockoutPickTypes.length) return showToast("Choose at least one pick type for each stage.");
+    const groupStageStart = $("groupStageStart")?.value || DEFAULT_TOURNAMENT.groupStageStart;
+    const groupStageEnd = $("groupStageEnd")?.value || DEFAULT_TOURNAMENT.groupStageEnd;
+    const knockoutStart = $("knockoutStart")?.value || DEFAULT_TOURNAMENT.knockoutStart;
+    if (groupStageStart > groupStageEnd) return showToast("Group stage start cannot be after group stage end.");
+    if (knockoutStart <= groupStageEnd) return showToast("Knockout start should be after group stage end.");
     const nextPointValues = { ...pointValues() };
     document.querySelectorAll("[data-point-kind]").forEach((input) => {
       nextPointValues[input.dataset.pointKind] = Math.max(0, Number(input.value) || 0);
@@ -3056,6 +3200,22 @@ function bindEvents() {
     state.settings.entryAmount = Number($("entryAmount").value) || 0;
     state.settings.maxPlayers = nextMaxPlayers;
     state.settings.pointValues = nextPointValues;
+    state.settings.tournament = {
+      name: $("tournamentName")?.value?.trim() || DEFAULT_TOURNAMENT.name,
+      groupStageStart,
+      groupStageEnd,
+      knockoutStart,
+      group: {
+        maxPicksPerGame: Math.min(3, Math.max(1, Number($("groupMaxPicks")?.value) || 1)),
+        enabledPickTypes: groupPickTypes,
+        extraTime: Boolean($("groupExtraTime")?.checked)
+      },
+      knockout: {
+        maxPicksPerGame: Math.min(3, Math.max(1, Number($("knockoutMaxPicks")?.value) || 3)),
+        enabledPickTypes: knockoutPickTypes,
+        extraTime: Boolean($("knockoutExtraTime")?.checked)
+      }
+    };
     await persist();
     renderAll();
     showToast("Settings saved.");

@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260630-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260630-3" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="./config.js?v=20260617-4"></script>
@@ -186,6 +186,53 @@
           </div>
 
           <div class="admin-grid hidden" id="adminContent">
+            <details class="admin-details" open>
+              <summary>Tournament Setup</summary>
+              <div class="admin-tournament-grid">
+                <label class="field">
+                  <span>Tournament name</span>
+                  <input id="tournamentName" placeholder="World Cup 2026" />
+                </label>
+                <label class="field">
+                  <span>Group stage starts</span>
+                  <input id="groupStageStart" type="date" />
+                </label>
+                <label class="field">
+                  <span>Group stage ends</span>
+                  <input id="groupStageEnd" type="date" />
+                </label>
+                <label class="field">
+                  <span>Knockout starts</span>
+                  <input id="knockoutStart" type="date" />
+                </label>
+              </div>
+              <div class="stage-settings-grid">
+                <article class="stage-settings-card">
+                  <h3>Group stage betting</h3>
+                  <label class="field">
+                    <span>Max bet types per game</span>
+                    <input id="groupMaxPicks" type="number" min="1" max="3" step="1" />
+                  </label>
+                  <div class="stage-pick-list" id="groupPickTypes"></div>
+                  <label class="stage-pick-option">
+                    <input id="groupExtraTime" type="checkbox" />
+                    <span>Allow extra time / penalties</span>
+                  </label>
+                </article>
+                <article class="stage-settings-card">
+                  <h3>Knockout betting</h3>
+                  <label class="field">
+                    <span>Max bet types per game</span>
+                    <input id="knockoutMaxPicks" type="number" min="1" max="3" step="1" />
+                  </label>
+                  <div class="stage-pick-list" id="knockoutPickTypes"></div>
+                  <label class="stage-pick-option">
+                    <input id="knockoutExtraTime" type="checkbox" />
+                    <span>Allow extra time / penalties</span>
+                  </label>
+                </article>
+              </div>
+            </details>
             <label class="field">
               <span>Entry amount per selected game</span>
               <input id="entryAmount" type="number" min="0" step="0.25" />
@@ -273,6 +320,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260630-2"></script>
+    <script src="./app.js?v=20260630-3"></script>
   </body>
 </html>
