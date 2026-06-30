@@ -144,6 +144,9 @@ let finalSyncTimer = null;
 let winnerBannerReady = false;
 let selectedHistoryDate = "";
 let selectedAdminLateDate = "";
+let selectedAdminFavoriteDate = "";
+let selectedAdminResultsDate = "";
+let selectedPointKind = "result";
 let state = {
   settings: {
     entryAmount: 1,
@@ -1197,15 +1200,24 @@ function renderAdmin() {
 
 function renderAdminLateUnlocks() {
   const dateSelect = $("adminLateDateSelect");
+  const playerSelect = $("adminLatePlayerName");
   const gamesList = $("adminLateGamesList");
   const unlockList = $("adminLateUnlockList");
   if (!dateSelect || !gamesList || !unlockList) return;
-  const dates = Object.keys(DATE_COUNTS);
-  selectedAdminLateDate = selectedAdminLateDate && DATE_COUNTS[selectedAdminLateDate] ? selectedAdminLateDate : getActiveDate();
+  const dates = matchDates();
+  selectedAdminLateDate = selectedAdminLateDate && dates.includes(selectedAdminLateDate) ? selectedAdminLateDate : getActiveDate();
   dateSelect.innerHTML = dates
     .map((date) => `<option value="${date}" ${date === selectedAdminLateDate ? "selected" : ""}>${prettyDate(date)}</option>`)
     .join("");
-  const player = $("adminLatePlayerName")?.value?.trim() || "";
+  const players = realPlayers([...state.settings.players, ...betPlayerNames()]);
+  if (playerSelect) {
+    const current = playerSelect.value || players[0] || "";
+    playerSelect.innerHTML = players.length
+      ? players.map((player) => `<option value="${escapeHtml(player)}" ${player === current ? "selected" : ""}>${escapeHtml(player)}</option>`).join("")
+      : `<option value="">No players yet</option>`;
+    if (players.includes(current)) playerSelect.value = current;
+  }
+  const player = playerSelect?.value || "";
   const unlockedIds = new Set(lateUnlockGameIds(selectedAdminLateDate, player));
   const games = state.games[selectedAdminLateDate] || [];
   gamesList.innerHTML = games.length
@@ -1528,12 +1540,27 @@ function bindEvents() {
     showToast("Favorite challenge saved.");
   });
 
+  $("pointKindSelect")?.addEventListener("change", (event) => {
+    selectedPointKind = event.target.value;
+    renderAdmin();
+  });
+
+  $("adminFavoriteDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminFavoriteDate = event.target.value;
+    renderAdmin();
+  });
+
+  $("adminResultsDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminResultsDate = event.target.value;
+    renderAdmin();
+  });
+
   $("adminLateDateSelect")?.addEventListener("change", (event) => {
     selectedAdminLateDate = event.target.value;
     renderAdminLateUnlocks();
   });
 
-  $("adminLatePlayerName")?.addEventListener("input", renderAdminLateUnlocks);
+  $("adminLatePlayerName")?.addEventListener("change", renderAdminLateUnlocks);
 
   $("saveLateUnlockButton")?.addEventListener("click", async () => {
     if (!adminUnlocked) return showToast("Unlock admin first.");
@@ -1868,7 +1895,7 @@ function renderAdmin() {
     ? `${state.settings.players.join(", ")} (${state.settings.players.length}/${maxPlayers()})`
     : `No players registered yet. First saved bet becomes player 1/${maxPlayers()}.`;
   const values = pointValues();
-  $("adminRules").innerHTML = [
+  const pointOptions = [
     ["result", "Result 1/X/2"],
     ["goals", "Goals O2/U2"],
     ["halfResult", "1st half 1/X/2"],
@@ -1882,21 +1909,28 @@ function renderAdmin() {
     ["challenge3", "Favorite wins by 3+"],
     ["soloGameBonus", "Solo correct game bonus"],
     ["perfectDayBonus", "All selected correct bonus"]
-  ].map(([key, label]) => `<label class="field point-field">
-      <span>${label}</span>
-      <input data-point-kind="${key}" type="number" min="0" step="1" value="${values[key]}" />
-    </label>`)
+  ];
+  if (!pointOptions.some(([key]) => key === selectedPointKind)) selectedPointKind = "result";
+  $("pointKindSelect").innerHTML = pointOptions
+    .map(([key, label]) => `<option value="${key}" ${selectedPointKind === key ? "selected" : ""}>${label}</option>`)
     .join("");
-  $("adminFavoriteControls").innerHTML = matchDates()
-    .filter((date) => date >= todayKey())
-    .map((date) => {
-      const rows = (state.games[date] || [])
-        .map((game) => {
-          const challenge = favoriteChallenge(game);
-          const result = completedGame(game) ? `Final ${game.score1}-${game.score2}` : (isGameLocked(game) ? "Locked" : "Open");
-          return `<div class="admin-match-row">
+  $("pointValueInput").value = values[selectedPointKind] ?? 0;
+  $("adminRules").innerHTML = `<div class="small">Choose a bet type, change the points, then tap Save settings.</div>`;
+
+  const availableDates = matchDates();
+  selectedAdminFavoriteDate = selectedAdminFavoriteDate && availableDates.includes(selectedAdminFavoriteDate)
+    ? selectedAdminFavoriteDate
+    : (availableDates.find((date) => date >= todayKey()) || getActiveDate());
+  $("adminFavoriteDateSelect").innerHTML = availableDates
+    .map((date) => `<option value="${date}" ${date === selectedAdminFavoriteDate ? "selected" : ""}>${prettyDate(date)}</option>`)
+    .join("");
+  $("adminFavoriteControls").innerHTML = (state.games[selectedAdminFavoriteDate] || [])
+    .map((game) => {
+      const challenge = favoriteChallenge(game);
+      const result = completedGame(game) ? `Final ${game.score1}-${game.score2}` : (isGameLocked(game) ? "Locked" : "Open");
+      return `<div class="admin-match-row">
             <div>
-              <strong>${prettyDate(date)} &middot; G${game.index}</strong>
+              <strong>${prettyDate(selectedAdminFavoriteDate)} &middot; G${game.index}</strong>
               <div class="small">${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)} &middot; ${result}</div>
             </div>
             <select data-favorite-game="${game.id}" aria-label="Favorite challenge for ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}">
@@ -1905,24 +1939,23 @@ function renderAdmin() {
               <option value="2" ${challenge?.side === "2" ? "selected" : ""}>${escapeHtml(game.team2)} favorite</option>
             </select>
           </div>`;
-        })
-        .join("");
-      return rows ? `<article class="game-card"><div class="game-meta"><strong>${prettyDate(date)}</strong><span>${rows ? "" : "No games"}</span></div>${rows}</article>` : "";
     })
-    .join("") || `<div class="empty">No games available yet.</div>`;
+    .join("") || `<div class="empty">No games available for this day.</div>`;
   renderAdminLateUnlocks();
-  $("adminResults").innerHTML = matchDates()
-    .map((date) => {
-      const rows = (state.games[date] || [])
+  selectedAdminResultsDate = selectedAdminResultsDate && availableDates.includes(selectedAdminResultsDate)
+    ? selectedAdminResultsDate
+    : getActiveDate();
+  $("adminResultsDateSelect").innerHTML = availableDates
+    .map((date) => `<option value="${date}" ${date === selectedAdminResultsDate ? "selected" : ""}>${prettyDate(date)}</option>`)
+    .join("");
+  const rows = (state.games[selectedAdminResultsDate] || [])
         .map((game) => `<div class="result-grid">
-          <div class="small">${prettyDate(date)} &middot; ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</div>
+          <div class="small">${prettyDate(selectedAdminResultsDate)} &middot; ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)}</div>
           <input data-score1="${game.id}" type="number" min="0" value="${game.score1 ?? ""}" placeholder="1" />
           <input data-score2="${game.id}" type="number" min="0" value="${game.score2 ?? ""}" placeholder="2" />
         </div>`)
         .join("");
-      return `<article class="game-card">${rows}</article>`;
-    })
-    .join("");
+  $("adminResults").innerHTML = rows ? `<article class="game-card">${rows}</article>` : `<div class="empty">No games available for this day.</div>`;
 }
 
 function calculate() {
@@ -3228,9 +3261,9 @@ function bindEvents() {
     if (knockoutStart <= groupStageEnd) return showToast("Knockout start should be after group stage end.");
     if (tournamentEnd < knockoutStart) return showToast("Tournament end should be after knockout start.");
     const nextPointValues = { ...pointValues() };
-    document.querySelectorAll("[data-point-kind]").forEach((input) => {
-      nextPointValues[input.dataset.pointKind] = Math.max(0, Number(input.value) || 0);
-    });
+    const pointKind = $("pointKindSelect")?.value || selectedPointKind || "result";
+    nextPointValues[pointKind] = Math.max(0, Number($("pointValueInput")?.value) || 0);
+    selectedPointKind = pointKind;
     state.settings.entryAmount = Number($("entryAmount").value) || 0;
     state.settings.maxPlayers = nextMaxPlayers;
     state.settings.pointValues = nextPointValues;
@@ -3272,12 +3305,27 @@ function bindEvents() {
     showToast("Favorite challenge saved.");
   });
 
+  $("pointKindSelect")?.addEventListener("change", (event) => {
+    selectedPointKind = event.target.value;
+    renderAdmin();
+  });
+
+  $("adminFavoriteDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminFavoriteDate = event.target.value;
+    renderAdmin();
+  });
+
+  $("adminResultsDateSelect")?.addEventListener("change", (event) => {
+    selectedAdminResultsDate = event.target.value;
+    renderAdmin();
+  });
+
   $("adminLateDateSelect")?.addEventListener("change", (event) => {
     selectedAdminLateDate = event.target.value;
     renderAdminLateUnlocks();
   });
 
-  $("adminLatePlayerName")?.addEventListener("input", renderAdminLateUnlocks);
+  $("adminLatePlayerName")?.addEventListener("change", renderAdminLateUnlocks);
 
   $("saveLateUnlockButton")?.addEventListener("click", async () => {
     if (!adminUnlocked) return showToast("Unlock admin first.");

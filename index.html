@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260630-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260630-5" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="./config.js?v=20260617-4"></script>
@@ -186,7 +186,7 @@
           </div>
 
           <div class="admin-grid hidden" id="adminContent">
-            <details class="admin-details" open>
+            <details class="admin-details">
               <summary>Tournament Setup</summary>
               <div class="admin-tournament-grid">
                 <label class="field">
@@ -271,6 +271,16 @@
             </div>
             <div>
               <h3 class="subhead">Point Values</h3>
+              <div class="admin-compact-row">
+                <label class="field">
+                  <span>Bet type</span>
+                  <select id="pointKindSelect"></select>
+                </label>
+                <label class="field">
+                  <span>Points</span>
+                  <input id="pointValueInput" type="number" min="0" step="1" />
+                </label>
+              </div>
               <div id="adminRules" class="admin-rules"></div>
             </div>
             <button class="primary-button" id="saveSettingsButton" type="button">
@@ -278,9 +288,13 @@
               <span>Save settings</span>
             </button>
 
-            <details class="admin-details" open>
+            <details class="admin-details">
               <summary>Favorite Challenges</summary>
               <div class="small">Use this for heavy favorites. Players will see extra high-point options on the Bet page.</div>
+              <label class="field admin-filter-field">
+                <span>Match day</span>
+                <select id="adminFavoriteDateSelect"></select>
+              </label>
               <div class="admin-match-controls" id="adminFavoriteControls"></div>
             </details>
 
@@ -294,7 +308,7 @@
                 </label>
                 <label class="field">
                   <span>Player name</span>
-                  <input id="adminLatePlayerName" placeholder="Exact player name" />
+                  <select id="adminLatePlayerName"></select>
                 </label>
                 <div id="adminLateGamesList" class="admin-late-games"></div>
                 <button class="secondary-button" id="saveLateUnlockButton" type="button">
@@ -307,6 +321,10 @@
 
             <details class="admin-details">
               <summary>Enter or Correct Results</summary>
+              <label class="field admin-filter-field">
+                <span>Match day</span>
+                <select id="adminResultsDateSelect"></select>
+              </label>
               <div class="admin-results" id="adminResults"></div>
             </details>
           </div>
@@ -344,6 +362,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260630-4"></script>
+    <script src="./app.js?v=20260630-5"></script>
   </body>
 </html>

@@ -411,9 +411,18 @@ textarea {
 }
 
 .admin-tournament-grid,
-.stage-settings-grid {
+.stage-settings-grid,
+.admin-compact-row {
   display: grid;
   gap: 10px;
+  margin-top: 12px;
+}
+
+.admin-compact-row {
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 140px);
+}
+
+.admin-filter-field {
   margin-top: 12px;
 }
 
