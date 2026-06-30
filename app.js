@@ -2244,6 +2244,26 @@ function teamRecentScores(team, group) {
     });
 }
 
+function tournamentTeamScores(team, cutoffDate = "") {
+  return Object.values(state.games)
+    .flat()
+    .filter((game) => completedGame(game)
+      && !isPlaceholderGame(game)
+      && game.date >= GROUP_STAGE_START_DATE
+      && (!cutoffDate || game.date <= cutoffDate)
+      && (game.team1 === team || game.team2 === team))
+    .sort((a, b) => `${b.date}-${b.index}`.localeCompare(`${a.date}-${a.index}`))
+    .slice(0, 6)
+    .map((game) => {
+      const isTeam1 = game.team1 === team;
+      const goalsFor = isTeam1 ? game.score1 : game.score2;
+      const goalsAgainst = isTeam1 ? game.score2 : game.score1;
+      const opponent = isTeam1 ? game.team2 : game.team1;
+      const result = goalsFor > goalsAgainst ? "W" : goalsFor < goalsAgainst ? "L" : "D";
+      return { label: `${team} vs ${opponent}`, score: `${goalsFor}-${goalsAgainst} ${result}` };
+    });
+}
+
 function renderGroupTable(group) {
   return `<div class="stats-table-wrap">
     <table class="stats-table">
@@ -2264,11 +2284,15 @@ function renderGroupTable(group) {
 function renderRecentScores(game, group) {
   const team1Scores = teamRecentScores(game.team1, group);
   const team2Scores = teamRecentScores(game.team2, group);
+  return renderSideBySideScores(game.team1, team1Scores, game.team2, team2Scores);
+}
+
+function renderSideBySideScores(team1, team1Scores, team2, team2Scores) {
   const maxRows = Math.max(team1Scores.length, team2Scores.length, 1);
   return `<div class="recent-score-grid">
-    <div class="recent-score-head">${escapeHtml(game.team1)}</div>
+    <div class="recent-score-head">${escapeHtml(team1)}</div>
     <div class="recent-score-head">Score</div>
-    <div class="recent-score-head">${escapeHtml(game.team2)}</div>
+    <div class="recent-score-head">${escapeHtml(team2)}</div>
     <div class="recent-score-head">Score</div>
     ${Array.from({ length: maxRows }).map((_, index) => {
       const left = team1Scores[index];
@@ -2279,6 +2303,23 @@ function renderRecentScores(game, group) {
         <strong>${right ? escapeHtml(right.score) : "-"}</strong>`;
     }).join("")}
   </div>`;
+}
+
+function renderKnockoutRecentScores(game, date) {
+  return renderSideBySideScores(
+    game.team1,
+    tournamentTeamScores(game.team1, date),
+    game.team2,
+    tournamentTeamScores(game.team2, date)
+  );
+}
+
+function renderKnockoutTeamTables(game, teamToGroup) {
+  const groups = [teamToGroup[game.team1], teamToGroup[game.team2]]
+    .filter(Boolean)
+    .filter((group, index, all) => all.findIndex((item) => item.name === group.name) === index);
+  if (!groups.length) return `<div class="empty compact-empty">No group table available yet.</div>`;
+  return groups.map((group) => `<h3>${escapeHtml(group.name)} current table</h3>${renderGroupTable(group)}`).join("");
 }
 
 function renderGroupPath(group) {
@@ -2583,24 +2624,46 @@ function renderStats() {
     }
     const { groups, teamToGroup } = inferGroups();
     renderBracketPathOverview();
-    list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
+    if (date <= GROUP_STAGE_END_DATE) {
+      list.innerHTML = statsGroupsForDate(date, teamToGroup).map(({ group, games }) => {
+        const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
+        const gameLabel = games.map(shortGameName).join(" & ");
+        return `<details class="stats-card">
+          <summary>
+            <span>
+              <strong>${escapeHtml(group.name)}: ${escapeHtml(gameLabel)}</strong>
+              <em>${escapeHtml(group.name)} - ${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
+            </span>
+            <span>${timeLabel}</span>
+          </summary>
+          <div class="stats-card-body">
+            <h3>${escapeHtml(group.name)} current table</h3>
+            ${renderGroupTable(group)}
+            <h3>Recent World Cup scores</h3>
+            ${renderGroupRecentScores(group)}
+            <h3>H2H Previous meeting</h3>
+            ${renderGroupH2H(games)}
+          </div>
+        </details>`;
+      }).join("");
+      return;
+    }
+    list.innerHTML = games.map((game) => {
       const timeLabel = [...new Set(games.map((game) => game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Time TBD"))].join(" / ");
-      const gameLabel = games.map(shortGameName).join(" & ");
       return `<details class="stats-card">
         <summary>
           <span>
-            <strong>${escapeHtml(group.name)}: ${escapeHtml(gameLabel)}</strong>
-            <em>${escapeHtml(group.name)} - ${group.teams.map((team) => escapeHtml(team)).join(", ")}</em>
+            <strong>${escapeHtml(shortGameName(game))}</strong>
+            <em>${escapeHtml([teamToGroup[game.team1]?.name, teamToGroup[game.team2]?.name].filter(Boolean).join(" vs ") || "Knockout match")}</em>
           </span>
-          <span>${timeLabel}</span>
+          <span>${game.time ? new Date(game.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : timeLabel}</span>
         </summary>
         <div class="stats-card-body">
-          <h3>${escapeHtml(group.name)} current table</h3>
-          ${renderGroupTable(group)}
+          ${renderKnockoutTeamTables(game, teamToGroup)}
           <h3>Recent World Cup scores</h3>
-          ${renderGroupRecentScores(group)}
+          ${renderKnockoutRecentScores(game, date)}
           <h3>H2H Previous meeting</h3>
-          ${renderGroupH2H(games)}
+          ${renderGroupH2H([game])}
         </div>
       </details>`;
     }).join("");
