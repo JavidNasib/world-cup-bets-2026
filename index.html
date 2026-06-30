@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>World Cup Prediction Bank</title>
-    <link rel="stylesheet" href="./styles.css?v=20260630-3" />
+    <link rel="stylesheet" href="./styles.css?v=20260630-4" />
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="./config.js?v=20260617-4"></script>
@@ -194,6 +194,26 @@
                   <input id="tournamentName" placeholder="World Cup 2026" />
                 </label>
                 <label class="field">
+                  <span>Automatic data source</span>
+                  <select id="tournamentDataProvider">
+                    <option value="espn">ESPN automatic fixtures/results</option>
+                    <option value="none">No automatic sync</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>ESPN competition</span>
+                  <select id="espnLeague">
+                    <option value="fifa.world">FIFA World Cup</option>
+                    <option value="uefa.champions">UEFA Champions League</option>
+                    <option value="uefa.europa">UEFA Europa League</option>
+                    <option value="eng.1">English Premier League</option>
+                    <option value="esp.1">Spanish LaLiga</option>
+                    <option value="ita.1">Italian Serie A</option>
+                    <option value="ger.1">German Bundesliga</option>
+                    <option value="fra.1">French Ligue 1</option>
+                  </select>
+                </label>
+                <label class="field">
                   <span>Group stage starts</span>
                   <input id="groupStageStart" type="date" />
                 </label>
@@ -204,6 +224,10 @@
                 <label class="field">
                   <span>Knockout starts</span>
                   <input id="knockoutStart" type="date" />
+                </label>
+                <label class="field">
+                  <span>Tournament ends</span>
+                  <input id="tournamentEnd" type="date" />
                 </label>
               </div>
               <div class="stage-settings-grid">
@@ -320,6 +344,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260630-3"></script>
+    <script src="./app.js?v=20260630-4"></script>
   </body>
 </html>

@@ -119,6 +119,9 @@ const PICK_TYPE_CONFIG = [
 ];
 const DEFAULT_TOURNAMENT = {
   name: "World Cup 2026",
+  dataProvider: "espn",
+  espnLeague: "fifa.world",
+  tournamentEnd: "2026-07-19",
   groupStageStart: GROUP_STAGE_START_DATE,
   groupStageEnd: GROUP_STAGE_END_DATE,
   knockoutStart: "2026-06-28",
@@ -310,6 +313,24 @@ function matchDates() {
   return [...new Set([...Object.keys(DATE_COUNTS), ...Object.keys(state.games || {})])].sort();
 }
 
+function dateRangeKeys(startDate, endDate) {
+  if (!startDate || !endDate || startDate > endDate) return [];
+  const dates = [];
+  const cursor = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  while (cursor <= end && dates.length < 370) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function syncDates() {
+  const tournament = tournamentSettings();
+  const range = dateRangeKeys(tournament.groupStageStart, tournament.tournamentEnd || tournament.knockoutStart || tournament.groupStageEnd);
+  return [...new Set([...matchDates(), ...range])].sort();
+}
+
 function dateGameCount(date) {
   return (state.games[date] || []).filter((game) => !isPlaceholderGame(game)).length || DATE_COUNTS[date] || 0;
 }
@@ -339,6 +360,13 @@ function tournamentStage(date) {
   if (date >= tournament.groupStageStart && date <= tournament.groupStageEnd) return "group";
   if (date >= tournament.knockoutStart) return "knockout";
   return "group";
+}
+
+function espnBaseForDate(date) {
+  const tournament = tournamentSettings();
+  if (tournament.dataProvider !== "espn") return "";
+  if (tournament.espnLeague === "fifa.world" && date === "2026-06-10") return ESPN_FRIENDLY_BASE;
+  return `https://site.api.espn.com/apis/site/v2/sports/soccer/${tournament.espnLeague || "fifa.world"}/scoreboard`;
 }
 
 function stageRulesForDate(date) {
@@ -870,12 +898,13 @@ async function saveBet(date, playerName, pin, picks) {
 }
 
 async function syncFixtures(silent = false) {
-  const dates = matchDates();
+  const dates = syncDates();
   if (!silent) showToast("Syncing fixtures and results...");
   let updated = 0;
   for (const date of dates) {
     try {
-      const base = date === "2026-06-10" ? ESPN_FRIENDLY_BASE : ESPN_BASE;
+      const base = espnBaseForDate(date);
+      if (!base) continue;
       const url = `${base}?dates=${date.replaceAll("-", "")}`;
       const response = await fetch(url);
       if (!response.ok) continue;
@@ -1124,9 +1153,12 @@ function renderAdmin() {
   if (!adminUnlocked) return;
   const tournament = tournamentSettings();
   $("tournamentName").value = tournament.name;
+  $("tournamentDataProvider").value = tournament.dataProvider;
+  $("espnLeague").value = tournament.espnLeague;
   $("groupStageStart").value = tournament.groupStageStart;
   $("groupStageEnd").value = tournament.groupStageEnd;
   $("knockoutStart").value = tournament.knockoutStart;
+  $("tournamentEnd").value = tournament.tournamentEnd;
   $("groupMaxPicks").value = tournament.group.maxPicksPerGame;
   $("knockoutMaxPicks").value = tournament.knockout.maxPicksPerGame;
   $("groupExtraTime").checked = Boolean(tournament.group.extraTime);
@@ -3191,8 +3223,10 @@ function bindEvents() {
     const groupStageStart = $("groupStageStart")?.value || DEFAULT_TOURNAMENT.groupStageStart;
     const groupStageEnd = $("groupStageEnd")?.value || DEFAULT_TOURNAMENT.groupStageEnd;
     const knockoutStart = $("knockoutStart")?.value || DEFAULT_TOURNAMENT.knockoutStart;
+    const tournamentEnd = $("tournamentEnd")?.value || DEFAULT_TOURNAMENT.tournamentEnd;
     if (groupStageStart > groupStageEnd) return showToast("Group stage start cannot be after group stage end.");
     if (knockoutStart <= groupStageEnd) return showToast("Knockout start should be after group stage end.");
+    if (tournamentEnd < knockoutStart) return showToast("Tournament end should be after knockout start.");
     const nextPointValues = { ...pointValues() };
     document.querySelectorAll("[data-point-kind]").forEach((input) => {
       nextPointValues[input.dataset.pointKind] = Math.max(0, Number(input.value) || 0);
@@ -3202,6 +3236,9 @@ function bindEvents() {
     state.settings.pointValues = nextPointValues;
     state.settings.tournament = {
       name: $("tournamentName")?.value?.trim() || DEFAULT_TOURNAMENT.name,
+      dataProvider: $("tournamentDataProvider")?.value || DEFAULT_TOURNAMENT.dataProvider,
+      espnLeague: $("espnLeague")?.value || DEFAULT_TOURNAMENT.espnLeague,
+      tournamentEnd,
       groupStageStart,
       groupStageEnd,
       knockoutStart,
@@ -3217,6 +3254,7 @@ function bindEvents() {
       }
     };
     await persist();
+    await syncFixtures(true);
     renderAll();
     showToast("Settings saved.");
   });
