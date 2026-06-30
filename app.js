@@ -581,13 +581,13 @@ function clearBetForm(options = {}) {
 function scheduleFinalResultSync() {
   clearTimeout(finalSyncTimer);
   const now = Date.now();
-  const nextDate = Object.keys(DATE_COUNTS).find((date) => {
-    const last = lastGameTime(date);
-    return last && last.getTime() + GAME_RESULT_SYNC_DELAY_MS > now;
-  });
-  if (!nextDate) return;
-  const last = lastGameTime(nextDate);
-  const delay = Math.max(0, last.getTime() + GAME_RESULT_SYNC_DELAY_MS - now);
+  const nextSyncAt = Object.values(state.games)
+    .flat()
+    .map((game) => game.time ? new Date(game.time).getTime() + GAME_RESULT_SYNC_DELAY_MS : 0)
+    .filter((time) => time > now + 60000)
+    .sort((a, b) => a - b)[0];
+  if (!nextSyncAt) return;
+  const delay = Math.max(0, nextSyncAt - now);
   finalSyncTimer = setTimeout(async () => {
     await syncFixtures(true);
     scheduleFinalResultSync();
@@ -2467,7 +2467,19 @@ const BRACKET_SLOTS = [
 ];
 
 function bracketTeamKey(team) {
-  return String(team || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = String(team || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (key.startsWith("bosniaherz")) return "bosniaherzegovina";
+  if (key === "bosniaandherzegovina") return "bosniaherzegovina";
+  if (key === "congodr" || key === "democraticrepublicofthecongo" || key === "democraticrepublicofcongo") return "drcongo";
+  if (key === "usa" || key === "unitedstatesofamerica") return "unitedstates";
+  if (key === "cotedivoire" || key === "ctedivoire") return "ivorycoast";
+  return key;
+}
+
+function sameBracketTeam(left, right) {
+  const leftKey = bracketTeamKey(left);
+  const rightKey = bracketTeamKey(right);
+  return leftKey && rightKey && leftKey === rightKey;
 }
 
 function completedKnockoutGames() {
@@ -2475,20 +2487,21 @@ function completedKnockoutGames() {
 }
 
 function findKnockoutGame(teamA, teamB) {
-  const keyA = bracketTeamKey(teamA);
-  const keyB = bracketTeamKey(teamB);
   return completedKnockoutGames().find((game) => {
-    const gameA = bracketTeamKey(game.team1);
-    const gameB = bracketTeamKey(game.team2);
-    return (gameA === keyA && gameB === keyB) || (gameA === keyB && gameB === keyA);
+    return (sameBracketTeam(game.team1, teamA) && sameBracketTeam(game.team2, teamB))
+      || (sameBracketTeam(game.team1, teamB) && sameBracketTeam(game.team2, teamA));
   });
 }
 
 function knockoutWinner(teamA, teamB) {
   if (!teamA || !teamB) return "";
   const game = findKnockoutGame(teamA, teamB);
-  if (!game || Number(game.score1) === Number(game.score2)) return "";
-  return Number(game.score1) > Number(game.score2) ? game.team1 : game.team2;
+  if (!game) return "";
+  if (Number(game.score1) > Number(game.score2)) return game.team1;
+  if (Number(game.score1) < Number(game.score2)) return game.team2;
+  if (game.penaltyWinner === "1") return game.team1;
+  if (game.penaltyWinner === "2") return game.team2;
+  return "";
 }
 
 function computeBracketProgress() {
