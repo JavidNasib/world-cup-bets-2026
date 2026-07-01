@@ -1316,6 +1316,84 @@ textarea {
   font-size: 0.86rem;
 }
 
+.stat-day-detail {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.stat-day-detail .stat-break-row {
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  padding-right: 30px;
+}
+
+.stat-day-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.stat-day-detail summary::after {
+  content: "+";
+  position: absolute;
+  right: 10px;
+  font-weight: 1000;
+  color: var(--green);
+}
+
+.stat-day-detail[open] summary::after {
+  content: "-";
+}
+
+.stat-day-body {
+  display: grid;
+  gap: 6px;
+  padding: 0 9px 9px;
+}
+
+.stat-pick-detail,
+.stat-day-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(62px, 0.7fr) 42px 56px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 7px;
+  background: #f7faf7;
+  font-size: 0.82rem;
+}
+
+.stat-pick-detail.correct {
+  border-left: 4px solid #0fa66a;
+}
+
+.stat-pick-detail.wrong {
+  border-left: 4px solid #e03131;
+}
+
+.stat-pick-detail.pending {
+  border-left: 4px solid #c2a23a;
+}
+
+.stat-pick-detail.correct span:nth-child(3) {
+  color: #0fa66a;
+  font-weight: 1000;
+}
+
+.stat-pick-detail.wrong span:nth-child(3) {
+  color: #e03131;
+  font-weight: 1000;
+}
+
+.stat-day-total {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--soft);
+  font-weight: 900;
+}
+
 .game-meta {
   display: flex;
   align-items: center;
@@ -1891,6 +1969,16 @@ textarea {
   }
 
   .stat-break-row strong {
+    grid-column: 1 / -1;
+  }
+
+  .stat-pick-detail,
+  .stat-day-total {
+    grid-template-columns: 1fr 64px;
+  }
+
+  .stat-pick-detail strong,
+  .stat-day-total strong {
     grid-column: 1 / -1;
   }
 

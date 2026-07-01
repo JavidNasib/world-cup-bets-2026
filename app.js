@@ -2987,6 +2987,28 @@ function renderStatMetric(label, value) {
   return `<article class="stat-metric"><span>${escapeHtml(label)}</span><strong>${value}</strong></article>`;
 }
 
+function playerDailyPickDetails(date, player) {
+  const bet = state.bets[date]?.[player];
+  const picks = getBetPicks(bet) || {};
+  const games = state.games[date] || [];
+  return Object.entries(picks).flatMap(([gameId]) => {
+    const game = games.find((item) => item.id === gameId);
+    if (!game) return [];
+    return rawPicksForGame(picks, gameId)
+      .filter((pick) => pickCountsForDate(date, pick))
+      .map((pick) => {
+        const complete = completedGame(game);
+        const correct = complete && pickWins(pick, game);
+        return {
+          game: `${game.team1} vs ${game.team2}`,
+          pick: historyPickLabel(pick, game),
+          state: complete ? (correct ? "correct" : "wrong") : "pending",
+          points: correct ? pickPoints(pick) : 0
+        };
+      });
+  });
+}
+
 function renderPlayerStats() {
   const select = $("playerStatsSelect");
   const summary = $("playerStatsSummary");
@@ -3054,13 +3076,33 @@ function renderPlayerStats() {
     <span>${value.points} pts</span>
   </div>`).join("");
   const dailyRows = row.daily.length
-    ? row.daily.slice().reverse().map((day) => `<div class="stat-break-row">
-        <strong>${prettyDate(day.date)}</strong>
-        <span>${day.points} pts</span>
-        <span>${day.correct} correct</span>
-        <span>${day.wrong} wrong</span>
-        <span>${day.bonus ? `+${day.bonus} bonus` : "No bonus"}</span>
-      </div>`).join("")
+    ? row.daily.slice().reverse().map((day) => {
+      const pickDetails = playerDailyPickDetails(day.date, row.player);
+      const detailRows = pickDetails.length
+        ? pickDetails.map((item) => `<div class="stat-pick-detail ${item.state}">
+            <strong>${escapeHtml(item.game)}</strong>
+            <span>${escapeHtml(item.pick)}</span>
+            <span>${item.state === "correct" ? "&check;" : item.state === "wrong" ? "X" : "Pending"}</span>
+            <span>${item.points} pts</span>
+          </div>`).join("")
+        : `<div class="empty compact-empty">No counted picks for this day.</div>`;
+      const bonusLine = day.bonus
+        ? `<div class="stat-day-total"><span>Base ${day.base} pts</span><span>Bonus +${day.bonus} pts</span><strong>Total ${day.points} pts</strong></div>`
+        : `<div class="stat-day-total"><span>Base ${day.base} pts</span><span>No bonus</span><strong>Total ${day.points} pts</strong></div>`;
+      return `<details class="stat-day-detail">
+        <summary class="stat-break-row">
+          <strong>${prettyDate(day.date)}</strong>
+          <span>${day.points} pts</span>
+          <span>${day.correct} correct</span>
+          <span>${day.wrong} wrong</span>
+          <span>${day.bonus ? `+${day.bonus} bonus` : "No bonus"}</span>
+        </summary>
+        <div class="stat-day-body">
+          ${detailRows}
+          ${bonusLine}
+        </div>
+      </details>`;
+    }).join("")
     : `<div class="empty">No completed counted match days yet.</div>`;
   list.innerHTML = `<article class="stat-card">
       <h3>Pick Type Breakdown</h3>
