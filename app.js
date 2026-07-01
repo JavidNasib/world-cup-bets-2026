@@ -942,6 +942,16 @@ async function syncFixtures(silent = false) {
       for (const [idx, event] of events.entries()) {
         const synced = fromEspnEvent(event, date, idx + 1);
         if (synced.completed) {
+          const breakdown = await fetchEspnScoreBreakdown(base, synced.id);
+          if (breakdown?.regulation) {
+            synced.rtScore1 = breakdown.regulation.score1;
+            synced.rtScore2 = breakdown.regulation.score2;
+          }
+          if (breakdown?.extra) {
+            synced.etScore1 = breakdown.extra.score1;
+            synced.etScore2 = breakdown.extra.score2;
+          }
+          if (breakdown?.penaltyWinner) synced.penaltyWinner = breakdown.penaltyWinner;
           const half = state.settings.halfTimes?.[synced.id] || await fetchEspnHalfTimeScore(base, synced.id, synced.team1, synced.team2);
           if (half) {
             synced.htScore1 = half.score1;
@@ -1032,31 +1042,57 @@ async function fetchEspnHalfTimeScore(base, eventId, team1, team2) {
   }
 }
 
+async function fetchEspnScoreBreakdown(base, eventId) {
+  try {
+    const response = await fetch(`${base.replace("scoreboard", "summary")}?event=${eventId}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const competition = data.header?.competitions?.[0] || {};
+    const competitors = competition.competitors || [];
+    const home = competitors.find((item) => item.homeAway === "home") || competitors[0] || {};
+    const away = competitors.find((item) => item.homeAway === "away") || competitors[1] || {};
+    return {
+      regulation: regulationTimeScore(home, away, competition),
+      extra: extraTimeScore(home, away, competition),
+      penaltyWinner: penaltyWinner(home, away)
+    };
+  } catch {
+    return null;
+  }
+}
+
 function sameTeamName(left, right) {
   const clean = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   return clean(left) === clean(right);
 }
 
 function lineScoreValue(competitor, period) {
-  const row = (competitor.linescores || []).find((item) => Number(item.period) === period);
+  const rows = competitor.linescores || [];
+  const row = rows.find((item) => Number(item.period) === period) || rows[period - 1];
   const value = Number(row?.value ?? row?.score ?? row?.displayValue);
   return Number.isFinite(value) ? value : 0;
 }
 
-function extraTimeScore(home, away) {
+function extraTimeScore(home, away, competition = null) {
   const homeExtra = lineScoreValue(home, 3) + lineScoreValue(home, 4);
   const awayExtra = lineScoreValue(away, 3) + lineScoreValue(away, 4);
-  if (!homeExtra && !awayExtra) return null;
+  const statusText = String(competition?.status?.type?.name || competition?.status?.type?.description || competition?.status?.type?.detail || "").toLowerCase();
+  const hasShootout = Number.isFinite(Number(home.shootoutScore ?? home.penaltyScore ?? home.penalties))
+    || Number.isFinite(Number(away.shootoutScore ?? away.penaltyScore ?? away.penalties));
+  if (!homeExtra && !awayExtra && !hasShootout && !statusText.includes("aet") && !statusText.includes("pen")) return null;
   return {
-    score1: Number(home.score) || 0,
-    score2: Number(away.score) || 0
+    score1: homeExtra,
+    score2: awayExtra
   };
 }
 
-function regulationTimeScore(home, away) {
+function regulationTimeScore(home, away, competition = null) {
   const homeExtra = lineScoreValue(home, 3) + lineScoreValue(home, 4);
   const awayExtra = lineScoreValue(away, 3) + lineScoreValue(away, 4);
-  if (!homeExtra && !awayExtra) return null;
+  const statusText = String(competition?.status?.type?.name || competition?.status?.type?.description || competition?.status?.type?.detail || "").toLowerCase();
+  const hasShootout = Number.isFinite(Number(home.shootoutScore ?? home.penaltyScore ?? home.penalties))
+    || Number.isFinite(Number(away.shootoutScore ?? away.penaltyScore ?? away.penalties));
+  if (!homeExtra && !awayExtra && !hasShootout && !statusText.includes("aet") && !statusText.includes("pen")) return null;
   const homeRegulation = lineScoreValue(home, 1) + lineScoreValue(home, 2);
   const awayRegulation = lineScoreValue(away, 1) + lineScoreValue(away, 2);
   return {
@@ -1077,8 +1113,8 @@ function fromEspnEvent(event, date, index) {
   const competitors = competition.competitors || [];
   const home = competitors.find((item) => item.homeAway === "home") || competitors[0] || {};
   const away = competitors.find((item) => item.homeAway === "away") || competitors[1] || {};
-  const extra = extraTimeScore(home, away);
-  const regulation = regulationTimeScore(home, away);
+  const extra = extraTimeScore(home, away, competition);
+  const regulation = regulationTimeScore(home, away, competition);
   return {
     id: event.id || `${date}-${index}`,
     date,
@@ -1737,7 +1773,7 @@ function nearestPlayableDate() {
 
 function gameResultText(game) {
   if (!completedGame(game)) return "Pending";
-  return `${game.score1}-${game.score2}`;
+  return gameScoreLabel(game);
 }
 
 function regularScore(game) {
@@ -1747,6 +1783,25 @@ function regularScore(game) {
     score1: Number.isFinite(score1) ? score1 : 0,
     score2: Number.isFinite(score2) ? score2 : 0
   };
+}
+
+function hasRegularScore(game) {
+  return game?.rtScore1 !== null && game?.rtScore1 !== undefined && game?.rtScore2 !== null && game?.rtScore2 !== undefined;
+}
+
+function hasExtraScore(game) {
+  return game?.etScore1 !== null && game?.etScore1 !== undefined && game?.etScore2 !== null && game?.etScore2 !== undefined;
+}
+
+function gameScoreLabel(game) {
+  if (!completedGame(game)) return "Pending";
+  const regular = regularScore(game);
+  if (!hasRegularScore(game) && !hasExtraScore(game) && !game.penaltyWinner) return `${game.score1}-${game.score2}`;
+  const parts = [`FT ${regular.score1}-${regular.score2}`];
+  if (hasExtraScore(game)) parts.push(`ET ${game.etScore1}-${game.etScore2}`);
+  if (Number(game.score1) !== regular.score1 || Number(game.score2) !== regular.score2) parts.push(`Final ${game.score1}-${game.score2}`);
+  if (game.penaltyWinner) parts.push(`Pens ${game.penaltyWinner === "1" ? game.team1 : game.team2}`);
+  return parts.join(" · ");
 }
 
 function countedDate(date) {
@@ -1892,7 +1947,7 @@ function renderGameCard(game, playerName = "") {
       <div class="team-row"><strong>${escapeHtml(game.team1)}</strong><span>1</span></div>
       <div class="team-row"><strong>${escapeHtml(game.team2)}</strong><span>2</span></div>
     </div>
-    <div class="small">${escapeHtml(game.venue || "Venue TBD")}${completedGame(game) ? ` &middot; Final ${game.score1}-${game.score2}` : ""}</div>
+    <div class="small">${escapeHtml(game.venue || "Venue TBD")}${completedGame(game) ? ` &middot; ${escapeHtml(gameScoreLabel(game))}` : ""}</div>
     <div class="pick-type"><span>Pick type</span><span>${normalPicks.length}/${maxPicks}</span></div>
     <div class="pick-grid">${typeButtons}</div>
     ${selectedSections}
@@ -1908,7 +1963,7 @@ function renderMiniResults(date) {
   const completed = (state.games[date] || []).filter(completedGame);
   if (!completed.length) return "";
   return `<div class="mini-results-title">Latest scores</div>${completed
-    .map((game) => `<div><strong>G${game.index}</strong> ${escapeHtml(game.team1)} ${game.score1}-${game.score2} ${escapeHtml(game.team2)}</div>`)
+    .map((game) => `<div><strong>G${game.index}</strong> ${escapeHtml(game.team1)} vs ${escapeHtml(game.team2)} · ${escapeHtml(gameScoreLabel(game))}</div>`)
     .join("")}`;
 }
 
@@ -1983,7 +2038,7 @@ function renderAdmin() {
   $("adminFavoriteControls").innerHTML = (state.games[selectedAdminFavoriteDate] || [])
     .map((game) => {
       const challenge = favoriteChallenge(game);
-      const result = completedGame(game) ? `Final ${game.score1}-${game.score2}` : (isGameLocked(game) ? "Locked" : "Open");
+      const result = completedGame(game) ? gameScoreLabel(game) : (isGameLocked(game) ? "Locked" : "Open");
       return `<div class="admin-match-row">
             <div>
               <strong>${prettyDate(selectedAdminFavoriteDate)} &middot; G${game.index}</strong>
