@@ -2167,7 +2167,7 @@ function pickWins(pick, game) {
   const challenge = challengeInfo(pick);
   if (challenge) {
     const margin = challenge.side === "1" ? game.score1 - game.score2 : game.score2 - game.score1;
-    return margin >= challenge.margin;
+    return margin > challenge.margin;
   }
   if (exact) return exact.score1 === Number(game.score1) && exact.score2 === Number(game.score2);
   if (HALF_RESULT_OPTIONS.includes(pick)) return halfComplete && pick === halfResult;
