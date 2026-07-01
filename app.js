@@ -601,6 +601,17 @@ function correctPlayersForGame(date, game) {
     .map(([player]) => player);
 }
 
+function normalPerfectPlayersForGame(date, game) {
+  const dayBets = state.bets[date] || {};
+  return Object.entries(dayBets)
+    .filter(([, bet]) => {
+      const picks = getBetPicks(bet) || {};
+      const normalPicks = countedNormalPicksForGame(date, picks, game.id);
+      return completedGame(game) && normalPicks.length > 0 && normalPicks.every((pick) => pickWins(pick, game));
+    })
+    .map(([player]) => player);
+}
+
 function getBetPicks(bet) {
   if (!bet) return null;
   return bet.picks || bet;
@@ -1724,7 +1735,7 @@ function dailyPlayerPointBreakdown(date, player) {
     if (!completedGame(game) || !gamePicks.length) return sum;
     const correctPicks = gamePicks.filter((pick) => pickWins(pick, game));
     if (!correctPicks.length) return sum;
-    const correctPlayers = correctPlayersForGame(date, game);
+    const correctPlayers = tournamentStage(date) === "group" ? correctPlayersForGame(date, game) : normalPerfectPlayersForGame(date, game);
     if (correctPlayers.length === 1 && correctPlayers[0] === player) soloBonusPoints += soloGameBonus();
     return sum + correctPicks.reduce((pickSum, pick) => pickSum + pickPoints(pick), 0);
   }, 0);
