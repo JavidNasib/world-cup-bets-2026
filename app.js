@@ -493,6 +493,14 @@ function countedPicksForGame(date, picks, gameId) {
   return picksForGame(picks, gameId).filter((pick) => pickCountsForDate(date, pick));
 }
 
+function countedNormalPicksForGame(date, picks, gameId) {
+  return countedPicksForGame(date, picks, gameId).filter((pick) => !extraPickKind(pickKind(pick)));
+}
+
+function countedExtraPicksForGame(date, picks, gameId) {
+  return countedPicksForGame(date, picks, gameId).filter((pick) => extraPickKind(pickKind(pick)));
+}
+
 function pickKind(value) {
   if (RESULT_OPTIONS.includes(value)) return "result";
   if (DOUBLE_OPTIONS.includes(value)) return "double";
@@ -1712,6 +1720,8 @@ function dailyPlayerPointBreakdown(date, player) {
   const games = state.games[date] || [];
   const picks = getBetPicks(state.bets[date]?.[player]) || {};
   const selectedGames = games.filter((game) => countedPicksForGame(date, picks, game.id).length);
+  const selectedNormalGames = games.filter((game) => countedNormalPicksForGame(date, picks, game.id).length);
+  const selectedExtraGames = games.filter((game) => countedExtraPicksForGame(date, picks, game.id).length);
   let soloBonusPoints = 0;
   const basePoints = games.reduce((sum, game) => {
     const gamePicks = countedPicksForGame(date, picks, game.id);
@@ -1723,7 +1733,12 @@ function dailyPlayerPointBreakdown(date, player) {
     return sum + correctPicks.reduce((pickSum, pick) => pickSum + pickPoints(pick), 0);
   }, 0);
   const allSelectedCorrect = selectedGames.length > 0 && selectedGames.every((game) => completedGame(game) && countedPicksForGame(date, picks, game.id).every((pick) => pickWins(pick, game)));
-  const perfectBonusPoints = games.length > 1 && allSelectedCorrect ? perfectDayBonus() : 0;
+  const allNormalSelectedCorrect = selectedNormalGames.length > 0 && selectedNormalGames.every((game) => completedGame(game) && countedNormalPicksForGame(date, picks, game.id).every((pick) => pickWins(pick, game)));
+  const allExtraSelectedCorrect = selectedExtraGames.length > 0 && selectedExtraGames.every((game) => completedGame(game) && countedExtraPicksForGame(date, picks, game.id).every((pick) => pickWins(pick, game)));
+  const groupPerfectBonusPoints = games.length > 1 && allSelectedCorrect ? perfectDayBonus() : 0;
+  const normalPerfectBonusPoints = games.length > 1 && allNormalSelectedCorrect ? perfectDayBonus() : 0;
+  const extraPerfectBonusPoints = normalPerfectBonusPoints && allExtraSelectedCorrect ? perfectDayBonus() : 0;
+  const perfectBonusPoints = tournamentStage(date) === "group" ? groupPerfectBonusPoints : normalPerfectBonusPoints + extraPerfectBonusPoints;
   const bonusPoints = soloBonusPoints + perfectBonusPoints;
   return { base: basePoints, soloBonus: soloBonusPoints, perfectBonus: perfectBonusPoints, bonus: bonusPoints, total: basePoints + bonusPoints };
 }
