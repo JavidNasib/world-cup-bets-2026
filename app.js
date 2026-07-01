@@ -55,14 +55,13 @@ const PENALTY_OPTIONS = ["P1", "P2"];
 const MAX_PICKS_PER_GAME = 3;
 const MIN_PLAYERS = 1;
 const ABSOLUTE_MAX_PLAYERS = 7;
-const BET_LOCK_MINUTES_BEFORE_FIRST_GAME = 15;
+const BET_LOCK_MINUTES_BEFORE_GAME = 25;
 const GAME_RESULT_SYNC_DELAY_MS = 2 * 60 * 60 * 1000 + 15 * 60 * 1000;
 const TEST_ONLY_DATES = new Set(["2026-06-10"]);
 const NEW_PICK_TEST_ONLY_DATES = new Set(["2026-06-28"]);
 const LEGACY_SCORING_KINDS = new Set(["result", "goals", "both", "double", "challenge"]);
 const GROUP_STAGE_START_DATE = "2026-06-11";
 const GROUP_STAGE_END_DATE = "2026-06-27";
-const SPECIAL_GAME_LOCK_OVERRIDES = new Set(["760421"]);
 const SPECIAL_GAME_INDEX_OVERRIDES = { 760421: 4 };
 const CHEAT_WARNING = "Fuck you Rafiz, did you think I dont know?";
 const H2H_NOTES = {
@@ -674,8 +673,8 @@ function lastGameTime(date) {
 }
 
 function isLocked(date) {
-  const first = firstGameTime(date);
-  return first ? Date.now() >= first.getTime() - BET_LOCK_MINUTES_BEFORE_FIRST_GAME * 60 * 1000 : false;
+  const games = state.games[date] || [];
+  return games.length > 0 && games.every(isGameLocked);
 }
 
 function clearBetForm(options = {}) {
@@ -1678,10 +1677,7 @@ function hasLateUnlock(game, playerName) {
 
 function isGameLocked(game) {
   if (!game?.time) return false;
-  if (SPECIAL_GAME_LOCK_OVERRIDES.has(String(game.id))) {
-    return gameStarted(game);
-  }
-  return isLocked(game.date);
+  return Date.now() >= new Date(game.time).getTime() - BET_LOCK_MINUTES_BEFORE_GAME * 60 * 1000;
 }
 
 function isGameLockedForPlayer(game, playerName) {
