@@ -157,7 +157,8 @@ let state = {
     gameBetting: {},
     favoriteChallenges: {},
     lateUnlocks: {},
-    halfTimes: {}
+    halfTimes: {},
+    regulationTimes: {}
   },
   games: seedGames(),
   bets: {}
@@ -804,6 +805,7 @@ async function loadFromSupabase() {
 
 function normalizeDbGame(row) {
   const half = state.settings.halfTimes?.[row.id] || {};
+  const regulation = state.settings.regulationTimes?.[row.id] || {};
   const extra = state.settings.extraTimes?.[row.id] || {};
   const penaltyWinner = state.settings.penaltyWinners?.[row.id] || "";
   return {
@@ -816,6 +818,8 @@ function normalizeDbGame(row) {
     venue: row.venue || "",
     score1: row.score1,
     score2: row.score2,
+    rtScore1: regulation.score1 ?? null,
+    rtScore2: regulation.score2 ?? null,
     htScore1: half.score1 ?? null,
     htScore2: half.score2 ?? null,
     etScore1: extra.score1 ?? null,
@@ -945,6 +949,10 @@ async function syncFixtures(silent = false) {
             state.settings.halfTimes ||= {};
             state.settings.halfTimes[synced.id] = half;
           }
+          if (synced.rtScore1 !== null && synced.rtScore2 !== null) {
+            state.settings.regulationTimes ||= {};
+            state.settings.regulationTimes[synced.id] = { score1: synced.rtScore1, score2: synced.rtScore2 };
+          }
           if (synced.etScore1 !== null && synced.etScore2 !== null) {
             state.settings.extraTimes ||= {};
             state.settings.extraTimes[synced.id] = { score1: synced.etScore1, score2: synced.etScore2 };
@@ -992,6 +1000,8 @@ function mergeSyncedGame(existing, synced) {
     ...synced,
     team1: team1Missing ? existing.team1 : synced.team1,
     team2: team2Missing ? existing.team2 : synced.team2,
+    rtScore1: synced.rtScore1 ?? existing.rtScore1 ?? null,
+    rtScore2: synced.rtScore2 ?? existing.rtScore2 ?? null,
     htScore1: synced.htScore1 ?? existing.htScore1 ?? null,
     htScore2: synced.htScore2 ?? existing.htScore2 ?? null,
     etScore1: synced.etScore1 ?? existing.etScore1 ?? null,
@@ -1043,6 +1053,18 @@ function extraTimeScore(home, away) {
   };
 }
 
+function regulationTimeScore(home, away) {
+  const homeExtra = lineScoreValue(home, 3) + lineScoreValue(home, 4);
+  const awayExtra = lineScoreValue(away, 3) + lineScoreValue(away, 4);
+  if (!homeExtra && !awayExtra) return null;
+  const homeRegulation = lineScoreValue(home, 1) + lineScoreValue(home, 2);
+  const awayRegulation = lineScoreValue(away, 1) + lineScoreValue(away, 2);
+  return {
+    score1: homeRegulation,
+    score2: awayRegulation
+  };
+}
+
 function penaltyWinner(home, away) {
   const homePens = Number(home.shootoutScore ?? home.penaltyScore ?? home.penalties);
   const awayPens = Number(away.shootoutScore ?? away.penaltyScore ?? away.penalties);
@@ -1056,6 +1078,7 @@ function fromEspnEvent(event, date, index) {
   const home = competitors.find((item) => item.homeAway === "home") || competitors[0] || {};
   const away = competitors.find((item) => item.homeAway === "away") || competitors[1] || {};
   const extra = extraTimeScore(home, away);
+  const regulation = regulationTimeScore(home, away);
   return {
     id: event.id || `${date}-${index}`,
     date,
@@ -1066,6 +1089,8 @@ function fromEspnEvent(event, date, index) {
     venue: competition.venue?.fullName || event.venue?.displayName || "",
     score1: Number.isFinite(Number(home.score)) ? Number(home.score) : null,
     score2: Number.isFinite(Number(away.score)) ? Number(away.score) : null,
+    rtScore1: regulation?.score1 ?? state.settings.regulationTimes?.[event.id]?.score1 ?? null,
+    rtScore2: regulation?.score2 ?? state.settings.regulationTimes?.[event.id]?.score2 ?? null,
     htScore1: state.settings.halfTimes?.[event.id]?.score1 ?? null,
     htScore2: state.settings.halfTimes?.[event.id]?.score2 ?? null,
     etScore1: extra?.score1 ?? state.settings.extraTimes?.[event.id]?.score1 ?? null,
@@ -1715,6 +1740,15 @@ function gameResultText(game) {
   return `${game.score1}-${game.score2}`;
 }
 
+function regularScore(game) {
+  const score1 = game.rtScore1 !== null && game.rtScore1 !== undefined ? Number(game.rtScore1) : Number(game.score1);
+  const score2 = game.rtScore2 !== null && game.rtScore2 !== undefined ? Number(game.rtScore2) : Number(game.score2);
+  return {
+    score1: Number.isFinite(score1) ? score1 : 0,
+    score2: Number.isFinite(score2) ? score2 : 0
+  };
+}
+
 function countedDate(date) {
   return !TEST_ONLY_DATES.has(date);
 }
@@ -2169,18 +2203,19 @@ function renderHistoryPager() {
 
 function pickWins(pick, game) {
   if (!pick || !completedGame(game)) return false;
-  const result = game.score1 > game.score2 ? "1" : game.score1 < game.score2 ? "2" : "X";
-  const total = game.score1 + game.score2;
+  const regular = regularScore(game);
+  const result = regular.score1 > regular.score2 ? "1" : regular.score1 < regular.score2 ? "2" : "X";
+  const total = regular.score1 + regular.score2;
   const halfComplete = game.htScore1 !== null && game.htScore1 !== undefined && game.htScore2 !== null && game.htScore2 !== undefined;
   const halfResult = halfComplete ? (game.htScore1 > game.htScore2 ? "H1" : game.htScore1 < game.htScore2 ? "H2" : "HX") : "";
   const halfTotal = halfComplete ? Number(game.htScore1) + Number(game.htScore2) : null;
   const exact = exactScoreInfo(pick);
   const challenge = challengeInfo(pick);
   if (challenge) {
-    const margin = challenge.side === "1" ? game.score1 - game.score2 : game.score2 - game.score1;
+    const margin = challenge.side === "1" ? regular.score1 - regular.score2 : regular.score2 - regular.score1;
     return margin > challenge.margin;
   }
-  if (exact) return exact.score1 === Number(game.score1) && exact.score2 === Number(game.score2);
+  if (exact) return exact.score1 === regular.score1 && exact.score2 === regular.score2;
   if (HALF_RESULT_OPTIONS.includes(pick)) return halfComplete && pick === halfResult;
   if (pick === "HO1.5") return halfComplete && halfTotal > 1.5;
   if (pick === "HU1.5") return halfComplete && halfTotal <= 1.5;
@@ -2195,8 +2230,8 @@ function pickWins(pick, game) {
   if (pick === "12") return result === "1" || result === "2";
   if (pick === "O2") return total > 2;
   if (pick === "U2") return total <= 2;
-  if (pick === "GG") return game.score1 > 0 && game.score2 > 0;
-  if (pick === "NG") return game.score1 === 0 || game.score2 === 0;
+  if (pick === "GG") return regular.score1 > 0 && regular.score2 > 0;
+  if (pick === "NG") return regular.score1 === 0 || regular.score2 === 0;
   return false;
 }
 
